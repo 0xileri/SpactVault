@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-10-25 (UTC). Network mode so far: **local sandbox and NEAR testnet** (since 2026-10-25). Nothing is on mainnet, and no real funds have moved: testnet NEAR and the TUSD test token have no value.
+Last updated 2026-11-01 (UTC). Network mode: **NEAR mainnet** since 2026-11-01, with a locked vault holding 5 real USDC (see "Mainnet deployment"). The testnet vault (since 2026-10-25) and the local sandbox stay for tests; testnet NEAR and the TUSD test token have no value.
 
 ## Milestone: AGENTS.md section 19 steps 1-5
 
@@ -17,7 +17,7 @@ Last updated 2026-10-25 (UTC). Network mode so far: **local sandbox and NEAR tes
 
 | # | Item | State |
 |---|---|---|
-| 1 | single owner + agent + one NEP-141 token | local tested (sandbox); deployed on testnet (see below) |
+| 1 | single owner + agent + one NEP-141 token | local tested (sandbox); deployed on testnet, and on **mainnet with native USDC** (see below) |
 | 2 | policy with auto, daily and per-tx limits, allowlists, pause | local tested |
 | 3 | agent requests via API/MCP; contract rejects unsafe requests | MCP server: local tested (sandbox, over stdio) and **run on testnet from Claude Code** (paid, held for approval, blocked; see below); **API not built** |
 | 4 | auto payment executes with on-chain receipt | local tested (sandbox); on testnet the deploy script's `demo-auto-1` (3 TUSD) was paid by the agent's restricted key |
@@ -25,7 +25,26 @@ Last updated 2026-10-25 (UTC). Network mode so far: **local sandbox and NEAR tes
 | 6 | owner wallet approves the exact request; executes once | local tested in a real browser (sandbox, dev signer); **testnet: the owner approved and paid `demo-approve-1` (25 TUSD) with Meteor Wallet on the hosted site**, and the page showed "Confirmed on chain" (owner's report, 2026-10-25). Other wallets untested |
 | 7 | dashboard | local tested in a real browser (sandbox): balance, budget, open requests and activity match the chain; inconsistent budget data from the RPC is flagged; no tx hashes (no indexer) |
 | 8 | Security Lab, at least 6 negative tests | local tested: generated report and page; 13 of 18 cases pass on a local chain, 3 in unit tests only, 2 are P1 (THREAT_MODEL.md); CI builds the report and publishes it with the site to GitHub Pages from main (ADR-023) |
-| 9 | public app, README, video, submission | public repo; site live at https://0xileri.github.io/SpactVault/ for the testnet vault, with a landing page and brand (ADR-024); README in progress; video and submission not started |
+| 9 | public app, README, video, submission | public repo; site live at https://spactvault.xyz (Railway) and https://0xileri.github.io/SpactVault/, both built for the mainnet vault, with a landing page and brand (ADR-024, ADR-027); README in progress; video and submission not started |
+
+## Mainnet deployment (2026-11-01)
+
+Deployed by the owner with `scripts/deploy-mainnet.sh 0xileri.near 0xileri.near` from WSL Ubuntu (near-cli-rs 0.30.1), under DECISIONS ADR-028. The hosted sites read this vault: Railway (https://spactvault.xyz) through service variables, GitHub Pages through repository variables.
+
+| | Account | Explorer |
+|---|---|---|
+| Vault | `vault.0xileri.near` | https://nearblocks.io/address/vault.0xileri.near |
+| Owner and deployer (Meteor Wallet) | `0xileri.near` | https://nearblocks.io/address/0xileri.near |
+| Agent | `agent.0xileri.near` | https://nearblocks.io/address/agent.0xileri.near |
+| Payee | `api.0xileri.near` | https://nearblocks.io/address/api.0xileri.near |
+| Token: native USDC, 6 decimals | `17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1` | https://nearblocks.io/address/17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1 |
+
+Checked on 2026-11-01 with three read-only near-cli commands on the owner's machine (`network-config mainnet now`):
+- **Vault keys** (`account list-keys`): none. The code is locked: nobody can redeploy it, the owner included.
+- **`get_config`:** owner `0xileri.near`, agents `[agent.0xileri.near]`, network `mainnet`, `policy_version` 1, `request_count` 0, `open_approvals` 0, not paused. The view call ran the vault's wasm, so mainnet runs the rustc 1.97 build.
+- **Balance** (`tokens view-ft-balance`): 5 USDC of the native USDC contract above.
+- **Not checked yet:** the policy (`get_policy`), the agent's keys and the vault's code hash. Mainnet is unreachable from the build environment, so everything here comes from the owner's terminal output.
+- **Agent:** the owner registered the MCP server in Claude Code with `SPACT_NETWORK=mainnet`, `ENABLE_MAINNET_TRANSFERS=true` and `SPACT_APPROVAL_URL=https://spactvault.xyz/`. No payment has run yet.
 
 ## Testnet deployment (2026-10-25)
 
@@ -80,8 +99,8 @@ GitHub Actions `ci` run 1 (commit `8b91f83`) passed both jobs. The contracts job
 
 Measured: an auto payment (request + ft_transfer + callback) burnt about 7 Tgas in sandbox.
 
-Mainnet preparation (2026-10-30), DECISIONS ADR-028. Nothing has run on mainnet yet.
-- **Owner's choices:** native USDC, a 5 USDC float with limits of 1 / 3 / 5 USDC, and the vault's code locked after the deploy. The owner is creating the mainnet account.
+Mainnet preparation (2026-10-30), DECISIONS ADR-028. The owner deployed it on 2026-11-01 (see "Mainnet deployment").
+- **Owner's choices:** native USDC, a 5 USDC float with limits of 1 / 3 / 5 USDC, and the vault's code locked after the deploy.
 - **Security gates:**
   - T07 (expired approvals) and T15 (approvals for another vault, network or policy version) gained five on-chain sandbox tests, which pass.
   - T10 stays unit-only, and the Security Lab says why.
@@ -96,7 +115,7 @@ Mainnet preparation (2026-10-30), DECISIONS ADR-028. Nothing has run on mainnet 
   - refused before spending: a wrong token, no float, no confirmation, and a second run;
   - a redeploy of the locked vault was refused, and it has no access keys;
   - limits, payee, agent key, the paid and waiting demo requests, and the owner withdrawing 1 USDC from the locked vault.
-- **Not verified from here:** the USDC contract id and a mainnet RPC. Their sources are in INTEGRATIONS "Mainnet". The script checks the token on chain before spending.
+- **USDC contract id:** confirmed by the deploy, which checks the token's metadata on chain before spending, and by the vault's 5 USDC balance (INTEGRATIONS "Mainnet").
 - **Site:** on mainnet the footer says real funds are involved. Switching a site is three variables.
 
 SpactVault brand (2026-10-30), DECISIONS ADR-027:
@@ -145,15 +164,16 @@ Agent key (2026-10-24): the agent now signs with a function-call key that reache
 ## Unresolved risks
 
 - Eligibility of code written before 2026-11-01 (DECISIONS ADR-000).
-- The vault account's full-access key can redeploy the code (THREAT_MODEL).
-- On testnet the agent account's full-access key stays with the operator (ADR-017); the mainnet choice is open.
+- On testnet the vault account's full-access key can redeploy the code (THREAT_MODEL). The mainnet vault has no keys.
+- The agent account's full-access key stays on the owner's machine, on testnet and on mainnet (ADR-017, ADR-028).
 - No reconciliation path for a stuck TRANSFER_PENDING; no storage pruning.
-- Mainnet protocol support for the rustc 1.97 wasm output is unverified (testnet runs it: protocol 88).
 - Only Meteor Wallet has signed an approval; other wallets are untested.
 - The vault wasm is not reproducible across build machines, so the deployed code hash cannot yet be checked bit for bit against the source.
 - No Content-Security-Policy, and framing is refused by script rather than a `frame-ancestors` header, which GitHub Pages cannot send (ADR-023).
 
 ## Next smallest task
+
+Run the three mainnet demo payments through the agent (`agent-mainnet-1` 0.5 USDC, paid; `agent-mainnet-2` 2 USDC, waits for the owner; `agent-mainnet-3` 4 USDC, blocked) and record their transaction hashes under "Mainnet deployment".
 
 Record the `demo-approve-1` approval transaction hash here (testnet).
 

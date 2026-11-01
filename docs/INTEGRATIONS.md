@@ -105,11 +105,11 @@ Seen on testnet (2026-10-25, the owner's run from WSL Ubuntu; testnet is unreach
 
 ## Mainnet (checked 2026-10-30)
 
-From the build environment, `developers.circle.com`, `www.circle.com`, `docs.near.org` and `docs.rs` do not resolve, so these come from web search results that quote those pages. Nothing here was read from mainnet by this environment. `scripts/deploy-mainnet.sh` reads it from the chain before it spends anything.
+From the build environment, `developers.circle.com`, `www.circle.com`, `docs.near.org` and `docs.rs` do not resolve, so these come from web search results that quote those pages. This environment cannot read mainnet; `scripts/deploy-mainnet.sh` reads these from the chain before it spends anything, and the "verified" entries come from the owner's terminal.
 
 | Item | Value | Source | Status |
 |---|---|---|---|
-| Native USDC | `17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`, NEP-141, 6 decimals | Circle's "What you need to know: USDC on NEAR" and Circle's NEAR page (shows `1720...33a1`); NEAR token lists | Unverified on chain. The deploy script refuses unless `ft_metadata` says USDC with 6 decimals, and the owner compares the id with https://developers.circle.com/stablecoins/usdc-contract-addresses before confirming |
+| Native USDC | `17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`, NEP-141, 6 decimals | Circle's "What you need to know: USDC on NEAR" and Circle's NEAR page (shows `1720...33a1`); NEAR token lists | Verified on chain 2026-11-01: the deploy script's `ft_metadata` check passed, and near-cli reads `vault.0xileri.near`'s balance of this token as 5 USDC (STATUS "Mainnet deployment") |
 | Bridged USDC.e | `a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.factory.bridge.near` | same sources | Not used: Circle advises against sending it to Circle accounts |
 | USDC on testnet | `3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af` | same sources | Not used: the testnet demo uses our own test token |
 | Mainnet RPC | `https://rpc.mainnet.fastnear.com` (script default) | FASTNEAR runs the testnet endpoint the site has used since ADR-023. docs.near.org's current providers page lists `https://archival-rpc.mainnet.near.org` (rate-limited), `https://near.drpc.org` and ZAN instead | Unverified from here. Any of them can be set with `RPC_URL` / `VITE_NEAR_RPC_URL`; check that browsers can reach it (CORS) on the live site |

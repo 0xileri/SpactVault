@@ -227,6 +227,7 @@ The owner made these choices on 2026-10-30:
   - Every NEAR-direct case passes. All but T10 pass on a real local chain.
 - **RPC.** The scripts default to `https://rpc.mainnet.fastnear.com` from FASTNEAR, which runs the testnet endpoint the site has used since ADR-023. docs.near.org's current providers page lists NEAR's archival endpoint, dRPC and ZAN. Any of them can be set with `RPC_URL` and `VITE_NEAR_RPC_URL`. Which one browsers can reach (CORS) is checked on the live site.
 - **Sites.** Switching a site to mainnet takes three variables: `VITE_NEAR_NETWORK`, `VITE_NEAR_RPC_URL` and `VITE_VAULT_ID`. Railway takes them as service variables, and GitHub Pages as repository variables. On mainnet the footer says real funds are involved.
+- **Outcome (2026-11-01).** The owner deployed `vault.0xileri.near` with `0xileri.near` as deployer and owner. Read back the same day: no vault keys, network `mainnet`, 5 USDC (STATUS "Mainnet deployment").
 
 ## Open questions (from AGENTS.md section 17)
 
@@ -235,7 +236,7 @@ The owner made these choices on 2026-10-30:
 - [x] Demo stablecoin: native USDC on mainnet, checked on chain by the deploy script (ADR-028). Open: 1Click support (P1).
 - [x] Mainnet protocol version >= 84: `scripts/deploy-mainnet.sh` reads it from the RPC and stops below 84 (ADR-028). Testnet: protocol 88 (2026-10-25).
 - [x] Vault account key policy: on mainnet the key is deleted after the deploy, so the code is locked (ADR-028).
-- [ ] Agent account full-access key on mainnet: keep offline (testnet choice, ADR-017) or delete it and plan allowance top-ups.
+- [x] Agent account full-access key on mainnet: kept offline on the owner's machine, as on testnet (ADR-017, ADR-028).
 - [ ] Reconciliation for a stuck TRANSFER_PENDING (callback out of gas).
 - [ ] Storage pruning for terminal requests.
 - [ ] 1Click quote authenticity and deposit semantics (P1).
