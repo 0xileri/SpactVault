@@ -118,7 +118,7 @@ To watch the attacks fail, run `pnpm e2e`. It drives Chromium against the same l
 
 ## Deploy to mainnet
 
-`scripts/deploy-mainnet.sh` deploys a vault that spends real USDC within small fixed limits, then locks its code (DECISIONS ADR-028). It is rehearsed end to end against a local node with a stand-in USDC (`scripts/rehearse-mainnet-sandbox.sh`). Nothing here has run on mainnet yet. It spends real funds, so you run it yourself, on your own machine, and it waits for you to type `deploy to mainnet`.
+`scripts/deploy-mainnet.sh` deploys a vault that spends real USDC within small fixed limits, then locks its code (DECISIONS ADR-028). It is rehearsed end to end against a local node with a stand-in USDC (`scripts/rehearse-mainnet-sandbox.sh`), and the owner ran it on 2026-11-01: the live vault is `vault.0xileri.near` (docs/STATUS.md, "Mainnet deployment"). It spends real funds, so you run it yourself, on your own machine, and it waits for you to type `deploy to mainnet`.
 
 1. Do steps 1 and 2 of "Deploy to testnet" (tools, an owner wallet), with a mainnet owner account such as `alice.near`.
 2. Create a named mainnet **deployer** account in a wallet, e.g. `yourname.near`. Fund it with about 3.5 NEAR plus 5 USDC. It must be native USDC, not the bridged USDC.e. Then import it into near-cli on your machine; near-cli asks for the seed phrase itself:
