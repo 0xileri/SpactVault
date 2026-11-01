@@ -131,7 +131,7 @@ describe("request_payment", () => {
     expect(result.structuredContent).toMatchObject({
       policy_decision: "OWNER_APPROVAL_REQUIRED",
       onchain_status: "AWAITING_APPROVAL",
-      review_url: "https://approve.example/?request=pay-1",
+      review_url: "https://approve.example/?request=pay-1&vault=vault.demo.testnet",
     });
     expect(firstText(result)).toMatch(/^Not paid yet/);
   });
@@ -239,7 +239,7 @@ describe("get_payment_status", () => {
       expires_at: "2025-11-02T11:26:40.000Z",
       expired: false,
       updated_at: "2025-11-01T11:26:40.000Z",
-      review_url: "https://approve.example/?request=pay-1",
+      review_url: "https://approve.example/?request=pay-1&vault=vault.demo.testnet",
     });
     expect(firstText(result)).not.toContain("ignore previous instructions");
   });

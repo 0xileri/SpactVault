@@ -26,7 +26,7 @@ describe("parseConfig", () => {
       pollMs: 5000,
     });
     expect(cfg.stateFile).toMatch(/\.spact\/notifier-testnet-vault\.demo\.testnet\.json$/);
-    expect(reviewLink(cfg, "pay:1")).toBe("https://approve.example/?request=pay%3A1");
+    expect(reviewLink(cfg, "pay:1")).toBe("https://approve.example/?request=pay%3A1&vault=vault.demo.testnet");
   });
 
   it("refuses unsafe or malformed setups", () => {

@@ -38,8 +38,10 @@ describe("parseConfig", () => {
 
 describe("links", () => {
   it("builds the approval page link the web app routes", () => {
-    expect(reviewLink({ approvalUrl: "https://approve.example/" }, "pay:1")).toBe("https://approve.example/?request=pay%3A1");
-    expect(reviewLink({ approvalUrl: null }, "pay-1")).toBeNull();
+    expect(reviewLink({ approvalUrl: "https://approve.example/", vaultId: "vault.demo.testnet" }, "pay:1")).toBe(
+      "https://approve.example/?request=pay%3A1&vault=vault.demo.testnet",
+    );
+    expect(reviewLink({ approvalUrl: null, vaultId: "vault.demo.testnet" }, "pay-1")).toBeNull();
   });
 
   it("links only well-formed transaction hashes", () => {

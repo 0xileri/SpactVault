@@ -1,4 +1,4 @@
-import { ArrowUpRight, GithubLogo } from "@phosphor-icons/react";
+import { ArrowUpRight, CaretDown, GithubLogo } from "@phosphor-icons/react";
 import { useMemo, type ReactNode } from "react";
 
 import { ApprovalPage } from "./components/ApprovalPage.js";
@@ -9,6 +9,7 @@ import { Legal } from "./components/Legal.js";
 import { SecurityLab } from "./components/SecurityLab.js";
 import { Badge, Button, Mono, Notice } from "./components/ui.js";
 import type { NetworkId, SiteConfig } from "./config.js";
+import { LinkContext, NETWORK_LABEL, switchHref, useLink, withNetwork } from "./network.js";
 import { createSigner } from "./signers/index.js";
 import { useSigner } from "./useSigner.js";
 
@@ -19,6 +20,7 @@ const NETWORK_BADGE: Record<NetworkId, { tone: "neutral" | "warn" | "bad"; label
 };
 
 function NoVault() {
+  const link = useLink();
   return (
     <Notice tone="info" title="No vault is connected to this site yet">
       <p>
@@ -26,7 +28,7 @@ function NoVault() {
         test results for the commit this site was built from.
       </p>
       <p className="mt-2">
-        <a href="?page=security" className="font-medium underline">
+        <a href={link("?page=security")} className="font-medium underline">
           Open the Security Lab
         </a>
       </p>
@@ -48,6 +50,7 @@ function FooterLink({ href, children, external = false }: { href: string; childr
 }
 
 function SiteFooter({ config }: { config: SiteConfig }) {
+  const link = useLink();
   return (
     <footer className="mt-24 border-t border-line">
       <div className="mx-auto flex max-w-6xl flex-wrap items-start justify-between gap-8 px-6 py-12 text-sm">
@@ -56,14 +59,14 @@ function SiteFooter({ config }: { config: SiteConfig }) {
           <p className="mt-3 text-zinc-600">Autonomous spending. Human rules. A budget for your AI agent, enforced on NEAR.</p>
         </div>
         <nav aria-label="Footer" className="flex flex-wrap gap-x-8 gap-y-3">
-          <FooterLink href="?page=overview">Dashboard</FooterLink>
-          <FooterLink href="?page=security">Security Lab</FooterLink>
+          <FooterLink href={link("?page=overview")}>Dashboard</FooterLink>
+          <FooterLink href={link("?page=security")}>Security Lab</FooterLink>
           {config.repoUrl ? (
             <FooterLink href={config.repoUrl} external>
               Source code
             </FooterLink>
           ) : null}
-          <FooterLink href="?page=legal">Privacy and terms</FooterLink>
+          <FooterLink href={link("?page=legal")}>Privacy and terms</FooterLink>
         </nav>
       </div>
       <p className="mx-auto max-w-6xl px-6 pb-8 text-xs leading-relaxed text-zinc-500">
@@ -75,7 +78,36 @@ function SiteFooter({ config }: { config: SiteConfig }) {
   );
 }
 
-export function App({ config }: { config: SiteConfig }) {
+/** Moves the whole site to another network: a fresh page load, so no state from the old one carries over. */
+function NetworkSwitch({ current, networks }: { current: NetworkId; networks: NetworkId[] }) {
+  const [main] = networks;
+  return (
+    <label className="relative flex items-center">
+      <span className="sr-only">Network</span>
+      <span aria-hidden="true" className={`pointer-events-none absolute left-2 h-2 w-2 rounded-full ${current === "mainnet" ? "bg-brand" : "bg-zinc-400"}`} />
+      <select
+        value={current}
+        onChange={(e) => main && window.location.assign(switchHref(window.location.search, e.target.value as NetworkId, main))}
+        className="cursor-pointer appearance-none rounded-full border border-line bg-surface py-1 pr-6 pl-5 text-sm font-medium text-ink transition-colors duration-300 ease-fluid hover:border-zinc-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        data-testid="network-switch"
+      >
+        {networks.map((n) => (
+          <option key={n} value={n}>
+            {NETWORK_LABEL[n]}
+          </option>
+        ))}
+      </select>
+      <CaretDown size={12} weight="bold" aria-hidden="true" className="pointer-events-none absolute right-2 text-zinc-500" />
+    </label>
+  );
+}
+
+export function App({ config, networks = [config.network] }: { config: SiteConfig; networks?: NetworkId[] }) {
+  const mainNetwork = networks[0] ?? config.network;
+  const link = useMemo(() => {
+    const away = config.network === mainNetwork ? null : config.network;
+    return (href: string) => withNetwork(href, away);
+  }, [config.network, mainNetwork]);
   const signer = useMemo(() => (config.vaultId === null ? null : createSigner(config)), [config]);
   const wallet = useSigner(signer);
   const params = new URLSearchParams(window.location.search);
@@ -90,7 +122,7 @@ export function App({ config }: { config: SiteConfig }) {
   const foreignVault = config.vaultId !== null && linkVault !== null && linkVault !== config.vaultId;
   const landing = onHome && !foreignVault;
   const navClass = (active: boolean) =>
-    `rounded-full px-3 py-1 transition-colors duration-300 ease-fluid ${active ? "bg-zinc-100 font-medium text-ink" : "text-zinc-600 hover:text-ink"}`;
+    `rounded-full px-2 py-1 transition-colors duration-300 ease-fluid sm:px-3 ${active ? "bg-zinc-100 font-medium text-ink" : "text-zinc-600 hover:text-ink"}`;
 
   const walletControls =
     config.vaultId === null ? null : signer === null ? (
@@ -132,84 +164,88 @@ export function App({ config }: { config: SiteConfig }) {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <a
-        href="#main"
-        className="sr-only z-50 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-paper focus:not-sr-only focus:fixed focus:top-4 focus:left-4"
-      >
-        Skip to content
-      </a>
-
-      <header className="pointer-events-none sticky top-0 z-40 px-4 pt-6">
-        <nav
-          aria-label="Pages"
-          className="pointer-events-auto mx-auto flex w-max max-w-full items-center gap-2 rounded-full border border-line bg-paper/80 py-2 pr-2 pl-4 text-sm shadow-lg shadow-zinc-900/5 backdrop-blur-xl sm:gap-4"
+    <LinkContext.Provider value={link}>
+      <div className="flex min-h-dvh flex-col">
+        <a
+          href="#main"
+          className="sr-only z-50 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-paper focus:not-sr-only focus:fixed focus:top-4 focus:left-4"
         >
-          <a href="./" aria-label="SpactVault home" aria-current={onHome ? "page" : undefined} className="mr-2 flex items-center">
-            <span className="flex sm:hidden">
-              <MarkTile />
-            </span>
-            <span className="hidden sm:inline-flex">
-              <Logo />
-            </span>
-          </a>
-          <a href="?page=overview" className={navClass(onDashboard)} aria-current={onDashboard ? "page" : undefined}>
-            Dashboard
-          </a>
-          <a href="?page=security" className={navClass(onSecurityLab)} aria-current={onSecurityLab ? "page" : undefined}>
-            Security Lab
-          </a>
-          {config.repoUrl ? (
-            <a
-              href={config.repoUrl}
-              target="_blank"
-              rel="noreferrer noopener"
-              aria-label="GitHub repository"
-              className="flex h-8 w-8 items-center justify-center rounded-full text-zinc-600 transition-colors duration-300 ease-fluid hover:bg-zinc-100 hover:text-ink"
-            >
-              <GithubLogo size={18} aria-hidden="true" />
+          Skip to content
+        </a>
+
+        <header className="pointer-events-none sticky top-0 z-40 px-4 pt-6">
+          <nav
+            aria-label="Pages"
+            className="pointer-events-auto mx-auto flex w-max max-w-full items-center gap-1 rounded-full border border-line bg-paper/80 py-2 pr-2 pl-3 text-sm shadow-lg shadow-zinc-900/5 backdrop-blur-xl sm:gap-4 sm:pl-4"
+          >
+            <a href={link("./")} aria-label="SpactVault home" aria-current={onHome ? "page" : undefined} className="mr-2 flex items-center">
+              <span className="flex sm:hidden">
+                <MarkTile />
+              </span>
+              <span className="hidden sm:inline-flex">
+                <Logo />
+              </span>
             </a>
+            <a href={link("?page=overview")} className={navClass(onDashboard)} aria-current={onDashboard ? "page" : undefined}>
+              Dashboard
+            </a>
+            <a href={link("?page=security")} className={navClass(onSecurityLab)} aria-current={onSecurityLab ? "page" : undefined}>
+              <span className="sm:hidden">Security</span>
+              <span className="hidden sm:inline">Security Lab</span>
+            </a>
+            {config.repoUrl ? (
+              <a
+                href={config.repoUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                aria-label="GitHub repository"
+                className="hidden h-8 w-8 items-center justify-center rounded-full text-zinc-600 sm:flex transition-colors duration-300 ease-fluid hover:bg-zinc-100 hover:text-ink"
+              >
+                <GithubLogo size={18} aria-hidden="true" />
+              </a>
+            ) : null}
+            {networks.length > 1 ? <NetworkSwitch current={config.network} networks={networks} /> : null}
+          </nav>
+        </header>
+
+        <main id="main" tabIndex={-1} className="flex-1 focus:outline-none">
+          {wallet.error ? (
+            <div className="mx-auto mt-6 max-w-5xl px-6">
+              <Notice tone="bad" title="Wallet error">
+                {wallet.error}
+              </Notice>
+            </div>
           ) : null}
-        </nav>
-      </header>
-
-      <main id="main" tabIndex={-1} className="flex-1 focus:outline-none">
-        {wallet.error ? (
-          <div className="mx-auto mt-6 max-w-5xl px-6">
-            <Notice tone="bad" title="Wallet error">
-              {wallet.error}
-            </Notice>
-          </div>
-        ) : null}
-        {landing ? (
-          content
-        ) : (
-          <div className={`mx-auto px-6 pt-8 ${requestId ? "max-w-2xl" : "max-w-5xl"}`}>
-            {onLegal ? null : (
-              <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500" data-testid="environment">
-                  {config.vaultId === null ? (
-                    <Badge tone="neutral">No vault connected</Badge>
-                  ) : (
-                    <>
-                      <Badge tone={badge.tone}>{badge.label}</Badge>
-                      <span>
-                        vault <Mono>{config.vaultId}</Mono>
-                      </span>
-                    </>
-                  )}
+          {landing ? (
+            content
+          ) : (
+            <div className={`mx-auto px-6 pt-8 ${requestId ? "max-w-2xl" : "max-w-5xl"}`}>
+              {onLegal ? null : (
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500" data-testid="environment">
+                    {config.vaultId === null ? (
+                      <Badge tone="neutral">No vault connected</Badge>
+                    ) : (
+                      <>
+                        <Badge tone={badge.tone}>{badge.label}</Badge>
+                        <span>
+                          vault <Mono>{config.vaultId}</Mono>
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2" data-testid="wallet">
+                    {walletControls}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2" data-testid="wallet">
-                  {walletControls}
-                </div>
-              </div>
-            )}
-            {content}
-          </div>
-        )}
-      </main>
+              )}
+              {content}
+            </div>
+          )}
+        </main>
 
-      <SiteFooter config={config} />
-    </div>
+        <SiteFooter config={config} />
+      </div>
+    </LinkContext.Provider>
   );
 }

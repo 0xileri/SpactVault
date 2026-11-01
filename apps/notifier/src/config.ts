@@ -90,9 +90,13 @@ export function parseConfig(env: Record<string, string | undefined>): NotifierCo
   };
 }
 
-/** The owner's approval page for one request, in the form the web app routes (`?request=<id>`). */
-export function reviewLink(config: Pick<NotifierConfig, "approvalUrl">, requestId: string): string {
+/**
+ * The owner's approval page for one request, in the form the web app routes (`?request=<id>&vault=<vault>`).
+ * The vault picks the right network on a site that shows more than one, and a site for another vault refuses it.
+ */
+export function reviewLink(config: Pick<NotifierConfig, "approvalUrl" | "vaultId">, requestId: string): string {
   const url = new URL(config.approvalUrl);
   url.searchParams.set("request", requestId);
+  url.searchParams.set("vault", config.vaultId);
   return url.toString();
 }

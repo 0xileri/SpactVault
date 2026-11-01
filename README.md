@@ -48,32 +48,39 @@ scripts/security-report.sh
 
 This runs every suite, then builds `apps/web/public/security-report.json` from the runners' own output. Open `http://localhost:5173/?page=security` while `scripts/dev-sandbox.sh` is running. Each attack from AGENTS.md section 10 is listed with the exact tests behind it, their results and where they ran. The page also shows the commit, the run, and a sha256 of each raw output file. A case passes on a local chain only if every listed test passed and at least one ran against a NEAR node. The page recomputes that itself instead of trusting the file. In CI the same report is the `security-report` artifact of each run.
 
-## Live on testnet
+## Live on mainnet and testnet
 
-**Testnet only. TUSD is a test token with no value. Unaudited prototype.**
+**Unaudited prototype.** The mainnet vault holds 5 real USDC with small fixed limits. Testnet uses TUSD, a test token with no value. The switch in the site's top bar moves between them.
 
-| | |
-|---|---|
-| Site (overview, approvals, Security Lab) | https://spactvault.xyz (also https://0xileri.github.io/SpactVault/) |
-| Vault | [`vault.spact-ileri2.testnet`](https://testnet.nearblocks.io/address/vault.spact-ileri2.testnet), code hash `bb664f2a1b19734e5bbb8f01372d737fcc724ae008be284603c7dd4dc191c81c` |
-| Owner (approves in Meteor Wallet) | [`0xileri.testnet`](https://testnet.nearblocks.io/address/0xileri.testnet) |
-| Agent (function-call key for two vault methods only) | [`agent.spact-ileri2.testnet`](https://testnet.nearblocks.io/address/agent.spact-ileri2.testnet) |
-| Test token / payee | [`tusd.spact-ileri2.testnet`](https://testnet.nearblocks.io/address/tusd.spact-ileri2.testnet) / [`api.spact-ileri2.testnet`](https://testnet.nearblocks.io/address/api.spact-ileri2.testnet) |
+| | Mainnet | Testnet |
+|---|---|---|
+| Site | https://spactvault.xyz (also https://0xileri.github.io/SpactVault/) | the same site, switched to **Testnet** (`?network=testnet`) |
+| Vault | [`vault.0xileri.near`](https://nearblocks.io/address/vault.0xileri.near), code locked (no access keys) | [`vault.spact-ileri2.testnet`](https://testnet.nearblocks.io/address/vault.spact-ileri2.testnet), code hash `bb664f2a1b19734e5bbb8f01372d737fcc724ae008be284603c7dd4dc191c81c` |
+| Owner (approves in Meteor Wallet) | [`0xileri.near`](https://nearblocks.io/address/0xileri.near) | [`0xileri.testnet`](https://testnet.nearblocks.io/address/0xileri.testnet) |
+| Agent (function-call key for two vault methods only) | [`agent.0xileri.near`](https://nearblocks.io/address/agent.0xileri.near) | [`agent.spact-ileri2.testnet`](https://testnet.nearblocks.io/address/agent.spact-ileri2.testnet) |
+| Token / payee | native USDC / [`api.0xileri.near`](https://nearblocks.io/address/api.0xileri.near) | [`tusd.spact-ileri2.testnet`](https://testnet.nearblocks.io/address/tusd.spact-ileri2.testnet) / [`api.spact-ileri2.testnet`](https://testnet.nearblocks.io/address/api.spact-ileri2.testnet) |
+| Limits | paid at once up to 1 USDC, waits up to 3, 5 a day | paid at once up to 10 TUSD, waits up to 30, 50 a day |
 
-The deploy script made two agent requests: 3 TUSD, paid automatically, and 25 TUSD, which the owner approved and paid from the site with Meteor Wallet. The code hash is from the owner's build; a build on another machine gives a different hash for now (docs/STATUS.md).
+On testnet the deploy script made two agent requests: 3 TUSD, paid automatically, and 25 TUSD, which the owner approved and paid from the site with Meteor Wallet. The testnet code hash is from the owner's build; a build on another machine gives a different hash for now (docs/STATUS.md).
 
 ## Hosted site
 
 After every job passes on main, CI publishes the site to GitHub Pages at https://0xileri.github.io/SpactVault/, with the Security Lab report from that same run. `/` is a landing page that states the vault's limits as read from its policy and shows live numbers from chain; the owner dashboard is `?page=overview`, the Security Lab `?page=security`, Privacy and terms `?page=legal`, and approval links stay `?request=<id>`. Nobody uploads the report by hand. A build without a vault id is the Security Lab alone; the overview and approval links then say that no vault is connected.
 
-Repository settings this needs: Settings → Pages → Source **GitHub Actions** (once), and the repository variable `VITE_VAULT_ID` (Settings → Secrets and variables → Actions → Variables) set to the vault id, now `vault.spact-ileri2.testnet`. After changing it, re-run the workflow on main. `VITE_NEAR_NETWORK` defaults to `testnet` and `VITE_NEAR_RPC_URL` to `https://test.rpc.fastnear.com`. These are public values, not secrets.
+Repository settings this needs: Settings → Pages → Source **GitHub Actions** (once), and repository variables under Settings → Secrets and variables → Actions → Variables:
+- `VITE_NEAR_NETWORK`, `VITE_NEAR_RPC_URL` and `VITE_VAULT_ID` for the main network, now `mainnet`, `https://rpc.mainnet.fastnear.com` and `vault.0xileri.near`. Without them the build defaults to testnet and `https://test.rpc.fastnear.com`.
+- Optional, for the network switch: `VITE_TESTNET_VAULT_ID`, now `vault.spact-ileri2.testnet` (with `VITE_TESTNET_RPC_URL`, default `https://test.rpc.fastnear.com`). On a testnet-first site, use `VITE_MAINNET_VAULT_ID` and `VITE_MAINNET_RPC_URL` instead.
+
+After changing them, re-run the workflow on main. These are public values, not secrets.
+
+The switch keeps you on the same page and adds `?network=testnet` to every link while you are on the second network. Approval links from the MCP server and the Telegram alert name their vault (`?request=<id>&vault=<vault>`), so they open on the right network on their own (DECISIONS ADR-031).
 
 ## Deploy to Railway
 
 The root `Dockerfile` builds the site and serves it with Caddy, which sends security headers that GitHub Pages cannot, such as `X-Frame-Options: DENY` (DECISIONS ADR-025). CI builds and checks the same image on every push (`web-image` job).
 
 1. At https://railway.com create a project from the GitHub repo. If Railway offers one service per package, keep a single service at the repository root. Its build log says `Using detected Dockerfile!`.
-2. Under the service's **Variables**, set `VITE_VAULT_ID=vault.spact-ileri2.testnet`. The other settings have defaults in the `Dockerfile`: testnet, `https://test.rpc.fastnear.com`, the Security Lab report from the GitHub Pages site, and this repository's link.
+2. Under the service's **Variables**, set the main network: here `VITE_NEAR_NETWORK=mainnet`, `VITE_NEAR_RPC_URL=https://rpc.mainnet.fastnear.com` and `VITE_VAULT_ID=vault.0xileri.near`. For the network switch, add `VITE_TESTNET_VAULT_ID=vault.spact-ileri2.testnet`. The other settings have defaults in the `Dockerfile`: testnet, `https://test.rpc.fastnear.com`, the second network's RPC, the Security Lab report from the GitHub Pages site, and this repository's link.
 3. Under **Settings → Networking**, generate a domain or add your own; this project uses `spactvault.xyz`. The share card uses the generated domain automatically (`RAILWAY_PUBLIC_DOMAIN`). For a custom domain, also set `VITE_SITE_URL=https://<your domain>`.
 4. Under **Settings**, turn on **Wait for CI**, so Railway deploys a commit only after GitHub Actions passed on it.
 5. When it is up, check it: `scripts/check-web-image.sh https://<domain> https://<domain>`.

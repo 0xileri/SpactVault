@@ -2,7 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App.js";
-import { ConfigError, parseSiteConfig } from "./config.js";
+import { ConfigError, parseSiteConfigs } from "./config.js";
+import { chooseConfig } from "./network.js";
 import "@fontsource-variable/geist-mono";
 import "@fontsource-variable/space-grotesk";
 import "./index.css";
@@ -25,10 +26,11 @@ if (window.top !== window.self) {
   );
 } else {
   try {
-    const config = parseSiteConfig(import.meta.env as Record<string, string | undefined>);
+    const configs = parseSiteConfigs(import.meta.env as Record<string, string | undefined>);
+    const config = chooseConfig(configs, window.location.search);
     root.render(
       <StrictMode>
-        <App config={config} />
+        <App config={config} networks={configs.map((c) => c.network)} />
       </StrictMode>,
     );
   } catch (e) {
