@@ -3,7 +3,10 @@
 //! Run `scripts/build-contracts.sh` first, then `cargo test -p integration-tests`.
 //! Test IDs (S1, T03, ...) refer to AGENTS.md sections 10 and 13.
 
-use integration_tests::{account, policy, setup, wasm, AGENT_GAS, AGENT_METHODS, ONE_YOCTO, UNIT};
+use integration_tests::{
+    account, policy, setup, wasm, Deployment, AGENT_GAS, AGENT_METHODS, ONE_YOCTO, UNIT,
+};
+use near_workspaces::operations::Function;
 use near_workspaces::result::ExecutionFinalResult;
 use near_workspaces::types::{AccessKey, AccessKeyPermission, KeyType, NearToken, SecretKey};
 use near_workspaces::Account;
@@ -418,5 +421,189 @@ async fn t20_agent_key_allowance_caps_gas_spending() -> anyhow::Result<()> {
     );
     assert!(env.get_request("no-gas").await?.is_null(), "nothing reached the vault");
     assert_eq!(env.budget().await?, (0, 0));
+    Ok(())
+}
+
+// ------------------------------------------------------------------ T07 on chain
+
+/// Sets the approval window to the shortest the policy allows (60 s). This bumps the policy
+/// version, so call it before creating the requests under test.
+async fn shortest_approval_window(env: &Deployment) -> anyhow::Result<()> {
+    let mut p = policy(&[env.api.id(), env.unregistered.id()], env.token.id());
+    p["approval_ttl_sec"] = json!(60);
+    env.owner
+        .call(env.vault.id(), "set_policy")
+        .args_json(json!({ "policy": p }))
+        .deposit(ONE_YOCTO)
+        .transact()
+        .await?
+        .into_result()?;
+    Ok(())
+}
+
+/// Moves the chain clock forward by more than `secs`. A fast-forwarded sandbox block adds about
+/// 0.3 s, so this jumps in steps of 400 blocks until the clock has passed the target.
+async fn advance_clock(env: &Deployment, secs: u64) -> anyhow::Result<()> {
+    let target = env.worker.view_block().await?.timestamp() + secs * 1_000_000_000;
+    while env.worker.view_block().await?.timestamp() <= target {
+        env.worker.fast_forward(400).await?;
+    }
+    Ok(())
+}
+
+async fn approve(env: &Deployment, id: &str, hash: &str) -> anyhow::Result<ExecutionFinalResult> {
+    Ok(env
+        .owner
+        .call(env.vault.id(), "approve_request")
+        .args_json(json!({ "request_id": id, "request_hash": hash }))
+        .deposit(ONE_YOCTO)
+        .transact()
+        .await?)
+}
+
+#[tokio::test]
+async fn t07_expired_request_cannot_be_approved_on_chain() -> anyhow::Result<()> {
+    let env = setup().await?;
+    shortest_approval_window(&env).await?;
+    let outcome: Value = env.request("t07-late", 25 * UNIT, env.api.id()).await?.json()?;
+    assert_eq!(outcome["status"], "AWAITING_APPROVAL");
+    let hash = outcome["request_hash"].as_str().unwrap().to_string();
+
+    advance_clock(&env, 61).await?;
+    assert_fails_with(approve(&env, "t07-late", &hash).await?, "REQUEST_EXPIRED");
+    assert_eq!(env.balance(env.api.id()).await?, 0);
+
+    // Anyone may close it once it has really expired, which frees its approval slot.
+    let closed: Value = env
+        .mallory
+        .call(env.vault.id(), "expire_request")
+        .args_json(json!({ "request_id": "t07-late" }))
+        .transact()
+        .await?
+        .json()?;
+    assert_eq!(closed["status"], "EXPIRED");
+    Ok(())
+}
+
+#[tokio::test]
+async fn t07_expired_approval_cannot_execute_on_chain() -> anyhow::Result<()> {
+    let env = setup().await?;
+    shortest_approval_window(&env).await?;
+    let outcome: Value = env.request("t07-stale", 25 * UNIT, env.api.id()).await?.json()?;
+    let hash = outcome["request_hash"].as_str().unwrap().to_string();
+    let approved: Value = approve(&env, "t07-stale", &hash).await?.json()?;
+    assert_eq!(approved["status"], "APPROVED");
+
+    advance_clock(&env, 61).await?;
+    let r = env
+        .agent
+        .call(env.vault.id(), "execute_request")
+        .args_json(json!({ "request_id": "t07-stale" }))
+        .gas(AGENT_GAS)
+        .transact()
+        .await?;
+    assert_fails_with(r, "APPROVAL_EXPIRED");
+    assert_eq!(env.balance(env.api.id()).await?, 0);
+    assert_eq!(env.budget().await?, (0, 0));
+    Ok(())
+}
+
+// ------------------------------------------------------------------ T15 on chain
+
+#[tokio::test]
+async fn t15_policy_change_invalidates_pending_approval_on_chain() -> anyhow::Result<()> {
+    let env = setup().await?;
+    let outcome: Value = env.request("t15-pending", 25 * UNIT, env.api.id()).await?.json()?;
+    let hash = outcome["request_hash"].as_str().unwrap().to_string();
+
+    // The owner re-saves the same policy: the numbers are unchanged, but the version moves on.
+    env.owner
+        .call(env.vault.id(), "set_policy")
+        .args_json(json!({ "policy": policy(&[env.api.id(), env.unregistered.id()], env.token.id()) }))
+        .deposit(ONE_YOCTO)
+        .transact()
+        .await?
+        .into_result()?;
+    assert_fails_with(approve(&env, "t15-pending", &hash).await?, "POLICY_VERSION_CHANGED");
+    assert_eq!(env.get_request("t15-pending").await?["status"], "AWAITING_APPROVAL");
+    Ok(())
+}
+
+#[tokio::test]
+async fn t15_policy_change_invalidates_approved_request_on_chain() -> anyhow::Result<()> {
+    let env = setup().await?;
+    let outcome: Value = env.request("t15-approved", 25 * UNIT, env.api.id()).await?.json()?;
+    let hash = outcome["request_hash"].as_str().unwrap().to_string();
+    approve(&env, "t15-approved", &hash).await?.into_result()?;
+
+    env.owner
+        .call(env.vault.id(), "set_policy")
+        .args_json(json!({ "policy": policy(&[env.api.id(), env.unregistered.id()], env.token.id()) }))
+        .deposit(ONE_YOCTO)
+        .transact()
+        .await?
+        .into_result()?;
+    let r = env
+        .agent
+        .call(env.vault.id(), "execute_request")
+        .args_json(json!({ "request_id": "t15-approved" }))
+        .gas(AGENT_GAS)
+        .transact()
+        .await?;
+    assert_fails_with(r, "POLICY_VERSION_CHANGED");
+    assert_eq!(env.balance(env.api.id()).await?, 0);
+    Ok(())
+}
+
+#[tokio::test]
+async fn t15_approval_for_another_vault_or_network_is_refused_on_chain() -> anyhow::Result<()> {
+    let env = setup().await?;
+    // A second vault with the same owner, agent, token and policy, but its own account and network.
+    let root = env.worker.root_account()?;
+    let other = account(&root, "vault2").await?;
+    other
+        .batch(other.id())
+        .deploy(&wasm("spact_vault"))
+        .call(Function::new("new").args_json(json!({
+            "owner": env.owner.id(),
+            "agents": [env.agent.id()],
+            "network": "testnet",
+            "policy": policy(&[env.api.id(), env.unregistered.id()], env.token.id()),
+        })))
+        .transact()
+        .await?
+        .into_result()?;
+
+    // The same request, field for field, in both vaults.
+    let here: Value = env.request("t15-twin", 25 * UNIT, env.api.id()).await?.json()?;
+    let there: Value = env
+        .agent
+        .call(other.id(), "request_direct_payment")
+        .args_json(json!({
+            "request_id": "t15-twin",
+            "token": env.token.id(),
+            "amount": (25 * UNIT).to_string(),
+            "recipient": env.api.id(),
+            "reason": "sandbox test",
+        }))
+        .gas(AGENT_GAS)
+        .transact()
+        .await?
+        .json()?;
+    let (hash_here, hash_there) =
+        (here["request_hash"].as_str().unwrap(), there["request_hash"].as_str().unwrap());
+    assert_ne!(hash_here, hash_there, "the hash binds the vault account and its network");
+
+    // An approval signed for one vault does not open the other.
+    assert_fails_with(approve(&env, "t15-twin", hash_there).await?, "HASH_MISMATCH");
+    let r = env
+        .owner
+        .call(other.id(), "approve_request")
+        .args_json(json!({ "request_id": "t15-twin", "request_hash": hash_here }))
+        .deposit(ONE_YOCTO)
+        .transact()
+        .await?;
+    assert_fails_with(r, "HASH_MISMATCH");
+    assert_eq!(env.get_request("t15-twin").await?["status"], "AWAITING_APPROVAL");
     Ok(())
 }

@@ -180,13 +180,61 @@ The owner renamed the product SpactVault, after the `spactvault` domain they wan
 - **Domain.** The owner bought `spactvault.xyz` and attached it to the Railway service, which verified it and issued its certificate. It is the site's primary address, and the Railway variable `VITE_SITE_URL=https://spactvault.xyz` points the share card at it. `spact.up.railway.app` and GitHub Pages keep serving the same build.
 - **Repository.** The owner renamed the repository to `0xileri/SpactVault`. GitHub Pages now serves `https://0xileri.github.io/SpactVault/`, and the old `/Spact/` path no longer works. So the `Dockerfile` defaults now point there: the Security Lab report URL that the Railway site reads, and the repository link. The README and the MCP setup example use the new address too. Approval links from an MCP server configured with the old `SPACT_APPROVAL_URL` stop working until it is set to the new URL.
 
+## ADR-028: Mainnet for the hackathon: native USDC, small fixed limits, a locked vault (2026-10-30)
+
+The owner does not want to submit a testnet demo. AGENTS.md allows mainnet only with the owner's explicit authorization. It also asks for:
+- a verified token;
+- a fresh, low-balance vault;
+- an upgrade policy decided first;
+- confirmation of the exact amounts and the most that can be lost before anything moves.
+
+The owner made these choices on 2026-10-30:
+
+- **Scope.** NEAR-direct payments only. Cross-chain payments (P1, 1Click) stay off, so T13 and T14 do not apply.
+- **Token: native USDC on NEAR.**
+  - `scripts/deploy-mainnet.sh` defaults to `17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`. That is the id in Circle's announcement and in NEAR token lists, and Circle's NEAR page shows it shortened to `1720...33a1`.
+  - Circle's full address list could not be fetched from the build environment. So the script reads the token's metadata on chain and refuses unless it says USDC with 6 decimals, and the owner compares the id with Circle's list before confirming.
+  - Bridged USDC.e (`a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.factory.bridge.near`) is a different token, and is not used.
+- **Limits.**
+  - Float: 5 USDC.
+  - Outcomes: paid at once up to 1 USDC; waits for the owner up to 3 USDC; 5 USDC a day.
+  - One payee: `api.<parent>`, the owner's own account, so paid USDC stays with the owner.
+  - At most 3 open approvals and 20 requests a day; approvals expire after 24 hours.
+- **Code lock.** After the deploy and init, the script deletes the vault's only full-access key and checks that none is left.
+  - Nobody can change the vault's code after that, the owner included.
+  - `owner_withdraw` still returns the USDC to the owner.
+  - The cost is the vault's NEAR, about 2.9, which stays locked as contract storage. Anyone can still top it up.
+  - This settles the open question "Vault account key policy".
+- **Agent.** Its key is a function-call key limited to two methods, with a 0.25 NEAR gas allowance (ADR-017). The agent account's full-access key stays offline on the owner's machine. The MCP server refuses mainnet unless `ENABLE_MAINNET_TRANSFERS=true`.
+- **Checks before spending.** The script stops before building or spending anything unless every check passes:
+  - the RPC serves chain `mainnet` at protocol version 84 or later (the rustc 1.97 build needs that, see INTEGRATIONS.md);
+  - the deployer and owner accounts exist, and the three subaccounts are free;
+  - the token is USDC with 6 decimals;
+  - the deployer holds the float and enough NEAR.
+
+  It then prints the plan and the most you can lose, and waits for the owner to type "deploy to mainnet".
+- **Accounts.**
+  - `<parent>` is a named mainnet account the owner creates and funds in a wallet, and imports into near-cli on their own machine.
+  - The vault, agent and payee are its subaccounts.
+  - The owner is the owner's wallet account.
+  - No key ever leaves the owner's machine.
+- **Cost and most you can lose.**
+  - NEAR: about 3.4 NEAR from `<parent>`: 2.9 locked in the vault, 0.3 to the agent, 0.1 to the payee, two USDC storage deposits and gas.
+  - USDC: the 5 USDC float, which only the owner can withdraw.
+  - Budget: this fits AGENTS.md's $100 ceiling while NEAR is below about $25.
+- **Security gates.** Before mainnet, T07 (expired approvals) and T15 (approvals for another vault, network or policy version) gained on-chain sandbox tests.
+  - T10 (a reservation across UTC midnight) stays unit-only: the transfer callback lands about a second after dispatch, and a sandbox cannot aim a transaction at a chosen instant.
+  - Every NEAR-direct case passes. All but T10 pass on a real local chain.
+- **RPC.** The scripts default to `https://rpc.mainnet.fastnear.com` from FASTNEAR, which runs the testnet endpoint the site has used since ADR-023. docs.near.org's current providers page lists NEAR's archival endpoint, dRPC and ZAN. Any of them can be set with `RPC_URL` and `VITE_NEAR_RPC_URL`. Which one browsers can reach (CORS) is checked on the live site.
+- **Sites.** Switching a site to mainnet takes three variables: `VITE_NEAR_NETWORK`, `VITE_NEAR_RPC_URL` and `VITE_VAULT_ID`. Railway takes them as service variables, and GitHub Pages as repository variables. On mainnet the footer says real funds are involved.
+
 ## Open questions (from AGENTS.md section 17)
 
 - [x] Official `HACKATHON.md`: added at the repo root (owner copy, 2026-10-23).
 - [ ] Eligibility of pre-window code (ADR-000).
-- [ ] Demo stablecoin on testnet/mainnet: token id, decimals, storage behavior, 1Click support.
-- [ ] Mainnet protocol version >= 84 for rustc 1.97 output (see INTEGRATIONS.md). Testnet: protocol 88, and the vault runs there (2026-10-25).
-- [ ] Vault account key policy: keep offline, delete after deploy, or a controlled upgrade path.
+- [x] Demo stablecoin: native USDC on mainnet, checked on chain by the deploy script (ADR-028). Open: 1Click support (P1).
+- [x] Mainnet protocol version >= 84: `scripts/deploy-mainnet.sh` reads it from the RPC and stops below 84 (ADR-028). Testnet: protocol 88 (2026-10-25).
+- [x] Vault account key policy: on mainnet the key is deleted after the deploy, so the code is locked (ADR-028).
 - [ ] Agent account full-access key on mainnet: keep offline (testnet choice, ADR-017) or delete it and plan allowance top-ups.
 - [ ] Reconciliation for a stuck TRANSFER_PENDING (callback out of gas).
 - [ ] Storage pruning for terminal requests.

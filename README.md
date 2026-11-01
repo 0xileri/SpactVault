@@ -116,6 +116,23 @@ To watch the attacks fail, run `pnpm e2e`. It drives Chromium against the same l
 4. Run `scripts/deploy-testnet.sh <name>.testnet <owner>.testnet`. You see `protocol version N` (it refuses below 84). It stops before building or spending anything if the owner account does not exist, or if this deployer was used before. Then you see one confirmation per step. It ends with the vault id, its code hash, the agent's key files, and three `VITE_` lines. The agent's two demo requests are signed with a function-call key that can call only `request_direct_payment` and `execute_request` on the vault. That key goes in `~/.near-credentials/spact/agent.<name>.testnet.json`. The agent account's full-access key stays in your keychain; don't give it to the agent.
 5. Set the repository variable `VITE_VAULT_ID` (see "Hosted site") and re-run the workflow, or put those lines in `apps/web/.env.local` and run `pnpm --filter @spact/web dev`. Open `?request=demo-approve-1` on the site (locally `http://localhost:5173/?request=demo-approve-1`) and connect the owner wallet within 24 hours, before the request expires. Click **Approve and pay** and confirm in the wallet. You see **Confirmed on chain: approved and paid**, with a link to testnet.nearblocks.io.
 
+## Deploy to mainnet
+
+`scripts/deploy-mainnet.sh` deploys a vault that spends real USDC within small fixed limits, then locks its code (DECISIONS ADR-028). It is rehearsed end to end against a local node with a stand-in USDC (`scripts/rehearse-mainnet-sandbox.sh`). Nothing here has run on mainnet yet. It spends real funds, so you run it yourself, on your own machine, and it waits for you to type `deploy to mainnet`.
+
+1. Do steps 1 and 2 of "Deploy to testnet" (tools, an owner wallet), with a mainnet owner account such as `alice.near`.
+2. Create a named mainnet **deployer** account in a wallet, e.g. `yourname.near`. Fund it with about 3.5 NEAR plus 5 USDC. It must be native USDC, not the bridged USDC.e. Then import it into near-cli on your machine; near-cli asks for the seed phrase itself:
+   `near account import-account using-seed-phrase network-config mainnet`
+3. Run `scripts/deploy-mainnet.sh <deployer>.near <owner>.near`. Before spending anything, it checks:
+   - the chain and protocol version;
+   - the accounts;
+   - that the token says USDC with 6 decimals;
+   - your NEAR and USDC balances.
+
+   Then it prints what it will spend and the most you can lose. Compare the token id it prints with Circle's list (https://developers.circle.com/stablecoins/usdc-contract-addresses) before you type `deploy to mainnet`.
+4. It creates `vault.`, `agent.` and `api.<deployer>`, deploys the vault with these limits: paid at once up to 1 USDC, waits for the owner up to 3, 5 a day, only to `api.<deployer>`. It gives the agent its restricted key, registers USDC storage and moves the 5 USDC float into the vault. Then it deletes the vault's full-access key and checks that none is left. From then on nobody can change the vault's code, and only the owner can take the USDC out (`owner_withdraw`).
+5. Point the sites at it with `VITE_NEAR_NETWORK=mainnet`, `VITE_NEAR_RPC_URL` and `VITE_VAULT_ID`: as Railway service variables, and as repository variables for GitHub Pages. The MCP server needs `SPACT_NETWORK=mainnet` and `ENABLE_MAINNET_TRANSFERS=true`.
+
 ## Run the tests
 
 Prerequisites: rustup (run `rustup toolchain install` inside `contracts/` to get the pinned 1.97.0 toolchain and wasm target), Node 22.12+, pnpm 10, and a C compiler (only used in containers with a low open-file limit).

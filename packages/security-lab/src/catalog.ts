@@ -121,9 +121,10 @@ export const CASES: readonly CatalogCase[] = [
     tests: [
       ["rust:spact_vault", "tests::t07_expired_request_cannot_be_approved"],
       ["rust:spact_vault", "tests::t07_expired_approval_cannot_execute"],
+      ["rust:sandbox", "t07_expired_request_cannot_be_approved_on_chain"],
+      ["rust:sandbox", "t07_expired_approval_cannot_execute_on_chain"],
       ["vitest:web", "assess > refuses expired, stale-policy and closed requests"],
     ],
-    note: "Unit tests only; not run on chain yet (it needs the chain clock past the approval window).",
   },
   {
     id: "T08",
@@ -150,7 +151,7 @@ export const CASES: readonly CatalogCase[] = [
     attack: "A reservation is open across UTC midnight.",
     expected: "It stays on its original day: no budget leaks or double counting.",
     tests: [["rust:spact_vault", "tests::t10_reservation_stays_on_its_original_day"]],
-    note: "Unit test with a mocked clock; not run on chain yet (it needs the chain clock at UTC midnight).",
+    note: "Unit test with a mocked clock. Not run on chain: the transfer callback lands about a second after dispatch, and a sandbox cannot aim a transaction at a chosen instant, so an on-chain test could not reliably straddle midnight.",
   },
   {
     id: "T11",
@@ -196,6 +197,9 @@ export const CASES: readonly CatalogCase[] = [
       ["rust:spact_vault", "tests::t15_hash_is_bound_to_vault_network_and_policy_version"],
       ["rust:spact_vault", "tests::t15_policy_change_invalidates_pending_approval"],
       ["rust:spact_vault", "tests::t15_policy_change_invalidates_approved_request"],
+      ["rust:sandbox", "t15_policy_change_invalidates_pending_approval_on_chain"],
+      ["rust:sandbox", "t15_policy_change_invalidates_approved_request_on_chain"],
+      ["rust:sandbox", "t15_approval_for_another_vault_or_network_is_refused_on_chain"],
       ["vitest:shared", "request digest > binds every material field"],
       ["vitest:web", "assess > hashes with this page's network and vault, not what the RPC claims"],
     ],

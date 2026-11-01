@@ -65,7 +65,7 @@ Deployed by the owner with `scripts/deploy-testnet.sh spact-ileri2.testnet 0xile
 
 | Command | Result |
 |---|---|
-| `scripts/test-contracts.sh` | vault unit 51 passed; mock-ft unit 1 passed; sandbox 10 passed |
+| `scripts/test-contracts.sh` | vault unit 51 passed; mock-ft unit 1 passed; sandbox 15 passed (2026-10-30) |
 | `cargo clippy --workspace --all-targets -- -D warnings` (in `contracts/`) | clean |
 | `cargo fmt --all --check` | clean |
 | `pnpm lint && pnpm typecheck && pnpm test && pnpm build` | clean; shared 19 passed, web 33 passed, mcp 24 passed, notifier 27 passed, security-lab 8 passed |
@@ -79,6 +79,25 @@ Manual check on a testnet build: the near-connect wallet selector opens with no 
 GitHub Actions `ci` run 1 (commit `8b91f83`) passed both jobs. The contracts job ran all 8 sandbox tests on the hosted runner without the rlimit shim.
 
 Measured: an auto payment (request + ft_transfer + callback) burnt about 7 Tgas in sandbox.
+
+Mainnet preparation (2026-10-30), DECISIONS ADR-028. Nothing has run on mainnet yet.
+- **Owner's choices:** native USDC, a 5 USDC float with limits of 1 / 3 / 5 USDC, and the vault's code locked after the deploy. The owner is creating the mainnet account.
+- **Security gates:**
+  - T07 (expired approvals) and T15 (approvals for another vault, network or policy version) gained five on-chain sandbox tests, which pass.
+  - T10 stays unit-only, and the Security Lab says why.
+  - CI builds the next report from these.
+- **`scripts/deploy-mainnet.sh`:**
+  - checks the chain, protocol version, accounts, token metadata and balances before spending;
+  - prints the cost and the most you can lose, and waits for a typed confirmation;
+  - creates the vault, agent and payee and sets the limits;
+  - registers USDC storage and moves the float into the vault;
+  - deletes the vault's full-access key and checks that none is left.
+- **`scripts/rehearse-mainnet-sandbox.sh`** runs that script unchanged on a local node with a stand-in USDC. All 20 checks passed:
+  - refused before spending: a wrong token, no float, no confirmation, and a second run;
+  - a redeploy of the locked vault was refused, and it has no access keys;
+  - limits, payee, agent key, the paid and waiting demo requests, and the owner withdrawing 1 USDC from the locked vault.
+- **Not verified from here:** the USDC contract id and a mainnet RPC. Their sources are in INTEGRATIONS "Mainnet". The script checks the token on chain before spending.
+- **Site:** on mainnet the footer says real funds are involved. Switching a site is three variables.
 
 SpactVault brand (2026-10-30), DECISIONS ADR-027:
 - **Name:** the product is SpactVault. The site, share card, 404 page, Telegram link message and MCP tool titles say so; code and package names stay `spact`.

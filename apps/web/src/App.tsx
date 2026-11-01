@@ -67,8 +67,9 @@ function SiteFooter({ config }: { config: SiteConfig }) {
         </nav>
       </div>
       <p className="mx-auto max-w-6xl px-6 pb-8 text-xs leading-relaxed text-zinc-500">
-        SpactVault is an unaudited hackathon prototype. Use test tokens only. This page never holds keys: your wallet signs, and the vault contract enforces the
-        rules.
+        SpactVault is an unaudited hackathon prototype.{" "}
+        {config.network === "mainnet" ? "It runs on NEAR mainnet with real funds: keep amounts small." : "Use test tokens only."} This page never holds keys:
+        your wallet signs, and the vault contract enforces the rules.
       </p>
     </footer>
   );
