@@ -41,12 +41,17 @@ test("owner approves and pays the exact request", async ({ page }) => {
   await expect(page.getByTestId("amount")).toHaveText("12 TUSD");
   await expect(page.getByTestId("recipient")).toHaveText(f.api_id);
   await expect(page.getByTestId("reason")).toContainText("Geocoding API credits");
+  await expect(page.getByTestId("why-waiting")).toHaveText("It is waiting for you because it is over your 10 TUSD instant limit.");
   await expect(page.getByTestId("hash-check")).toHaveAttribute("data-ok", "true");
+  await expect(page.getByTestId("hash-check")).toContainText("Safety check passed");
 
   await page.getByTestId("approve").click();
   await expect(page.getByTestId("phase")).toHaveAttribute("data-phase", "done", { timeout: 60_000 });
   await expect(page.getByTestId("phase")).toContainText("approved and paid");
   await expect(page.getByTestId("request-status")).toHaveAttribute("data-status", "SETTLED");
+  // once paid, the page says what happened instead of asking again
+  await expect(page.getByTestId("outcome")).toHaveText("You approved it, and it was sent.");
+  await expect(page.getByTestId("approve")).toHaveCount(0);
 
   // The page's claim matches the chain.
   expect((await near.request("e2e-pay"))?.status).toBe("SETTLED");

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { ArrowRight } from "@phosphor-icons/react";
+import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
 
-import { explainReason, type FtMetadata, type PaymentRequest } from "@spact/shared";
+import type { FtMetadata, PaymentRequest } from "@spact/shared";
 
 import { explorerAccountLink, type AppConfig } from "../config.js";
-import { budgetResetNs, isLapsed, usedPercent, waitingForOwner, type TokenSummary } from "../dashboard.js";
+import { budgetResetNs, isLapsed, outcomeLine, usedPercent, waitingForOwner, type TokenSummary } from "../dashboard.js";
 import { errorMessage, formatAmount, formatRelative, formatUtc } from "../format.js";
 import { listRequests, loadDashboard, type DashboardSnapshot } from "../near/vault.js";
 import { Badge, Button, Card, Mono, Notice, StatusBadge } from "./ui.js";
@@ -26,89 +27,69 @@ function AccountLink({ config, account }: { config: AppConfig; account: string }
   );
 }
 
-function Stat({ label, children, testId }: { label: string; children: ReactNode; testId?: string }) {
+function SectionHeading({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <Card className="p-4">
-      <p className="text-xs font-medium text-zinc-500">{label}</p>
-      <div className="mt-1 text-lg font-semibold text-zinc-900" data-testid={testId}>
+    <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <h2 className="text-lg font-semibold tracking-tight text-ink">{title}</h2>
+      {children ? <div className="text-xs text-zinc-500">{children}</div> : null}
+    </div>
+  );
+}
+
+function Stat({ label, children, testId, foot }: { label: string; children: ReactNode; testId?: string; foot?: ReactNode }) {
+  return (
+    <Card className="p-5">
+      <p className="text-sm text-zinc-500">{label}</p>
+      <div className="mt-1 text-2xl font-semibold tracking-tight text-ink sm:text-3xl" data-testid={testId}>
         {children}
       </div>
+      {foot ? <div className="mt-2 text-xs text-zinc-500">{foot}</div> : null}
     </Card>
   );
 }
 
-function TokenCard({ token, nowNs }: { token: TokenSummary; nowNs: bigint }) {
+/** Money in the vault and what is left of today's limit, for one token. */
+function MoneyStats({ token, nowNs }: { token: TokenSummary; nowNs: bigint }) {
   const { policy, metadata, balance, budget, budgetProblem } = token;
   const fmt = (units: string | bigint) => formatAmount(units.toString(), metadata);
   const pct = budget && !budgetProblem ? usedPercent(budget) : null;
   const resetIn = budget ? Number((budgetResetNs(budget) - nowNs) / 1_000_000_000n) : null;
   return (
-    <Card>
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold text-zinc-700">
-          {metadata ? metadata.symbol : "Token"} <Mono className="font-normal text-zinc-500">{policy.token}</Mono>
-        </h2>
-        <p className="text-sm text-zinc-600">
-          Vault holds{" "}
-          <span className="font-semibold text-zinc-900" data-testid={`balance-${policy.token}`}>
-            {balance === null ? "unknown" : fmt(balance)}
-          </span>
-        </p>
-      </div>
-
+    <>
+      <Stat label="Money in the vault" testId={`balance-${policy.token}`} foot={<Mono>{policy.token}</Mono>}>
+        {balance === null ? "unknown" : fmt(balance)}
+      </Stat>
       {budgetProblem ? (
-        <div className="mt-3">
-          <Notice tone="warn" title="Budget numbers from the RPC do not add up">
+        <div className="sm:col-span-2 lg:col-span-1">
+          <Notice tone="warn" title="Today's spending numbers do not add up">
             <p>
-              {budgetProblem}. The vault enforces its own numbers on chain, but this page will not show these. Check another RPC.
+              The server this page reads from sent numbers that contradict each other ({budgetProblem}), so they are not shown. The vault still
+              enforces its own limits.
             </p>
           </Notice>
         </div>
       ) : budget && pct !== null ? (
-        <div className="mt-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-            <p>
-              <span className="font-semibold" data-testid={`available-${policy.token}`}>
-                {fmt(budget.available)}
-              </span>{" "}
-              of {fmt(budget.daily_limit)} left today
-            </p>
-            <p className="text-xs text-zinc-500">resets {resetIn !== null ? formatRelative(resetIn) : ""} (00:00 UTC)</p>
-          </div>
-          <div
-            className="mt-2 h-2 overflow-hidden rounded-full bg-zinc-100"
-            role="progressbar"
-            aria-label="Share of today's budget used or reserved"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={pct}
-          >
-            <div className={`h-full ${pct >= 90 ? "bg-rose-500" : pct >= 60 ? "bg-amber-500" : "bg-emerald-600"}`} style={{ width: `${pct}%` }} />
-          </div>
-          <p className="mt-2 text-xs text-zinc-500">
-            {fmt(budget.executed)} paid today
-            {budget.pending !== "0" ? `, ${fmt(budget.pending)} reserved for transfers in flight` : ""}
-          </p>
-        </div>
+        <Stat
+          label="Left to spend today"
+          foot={
+            <>
+              <span className="block h-1.5 overflow-hidden rounded-full bg-zinc-100" role="progressbar" aria-label="Share of today's limit used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+                <span className={`block h-full rounded-full ${pct >= 90 ? "bg-blocked" : pct >= 60 ? "bg-waits" : "bg-paid"}`} style={{ width: `${pct}%` }} />
+              </span>
+              <span className="mt-2 block">
+                {fmt(budget.executed)} spent{budget.pending !== "0" ? `, ${fmt(budget.pending)} being sent` : ""}. Resets{" "}
+                {resetIn !== null ? formatRelative(resetIn) : ""} (midnight UTC).
+              </span>
+            </>
+          }
+        >
+          <span data-testid={`available-${policy.token}`}>{fmt(budget.available)}</span>
+          <span className="ml-2 text-sm font-normal tracking-normal text-zinc-500">of {fmt(budget.daily_limit)}</span>
+        </Stat>
       ) : (
-        <p className="mt-3 text-sm text-zinc-500">No budget data for this token.</p>
+        <Stat label="Left to spend today">unknown</Stat>
       )}
-
-      <dl className="mt-4 grid grid-cols-1 gap-3 border-t border-zinc-100 pt-3 text-sm sm:grid-cols-3">
-        <div>
-          <dt className="text-xs text-zinc-500">Paid automatically up to</dt>
-          <dd className="font-medium">{fmt(policy.auto_limit)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-zinc-500">Never more than, per payment</dt>
-          <dd className="font-medium">{fmt(policy.hard_tx_limit)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-zinc-500">Daily limit (UTC day)</dt>
-          <dd className="font-medium">{fmt(policy.daily_limit)}</dd>
-        </div>
-      </dl>
-    </Card>
+    </>
   );
 }
 
@@ -119,32 +100,43 @@ interface ActivityProps {
 }
 
 function RowStatus({ request, nowNs }: { request: PaymentRequest; nowNs: bigint }) {
+  return isLapsed(request, nowNs) ? <Badge tone="neutral">Expired</Badge> : <StatusBadge status={request.status} />;
+}
+
+function Note({ request }: { request: PaymentRequest }) {
+  return request.reason ? <span className="block text-xs text-zinc-500">for &ldquo;{request.reason}&rdquo;</span> : null;
+}
+
+function OpenLink({ request }: { request: PaymentRequest }) {
   return (
-    <span className="flex flex-wrap gap-1">
-      <StatusBadge status={request.status} />
-      {isLapsed(request, nowNs) ? <Badge tone="neutral">Expired by time</Badge> : null}
-    </span>
+    <a
+      href={requestLink(request.request_id)}
+      aria-label={`Open ${request.request_id}`}
+      className="text-sm font-medium whitespace-nowrap text-ink underline decoration-zinc-300 underline-offset-4 hover:decoration-brand"
+    >
+      Open
+    </a>
   );
 }
 
-/** Phones: one card per request, since a six-column table does not fit. */
+/** Phones: one card per request, since a table does not fit. */
 function ActivityList({ requests, metadataFor, nowNs }: ActivityProps) {
   return (
     <ul className="space-y-2 sm:hidden" data-testid="activity-list">
       {requests.map((r) => (
-        <li key={r.request_id} className="rounded-lg border border-zinc-200 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <a href={requestLink(r.request_id)} className="font-mono text-sm break-all underline decoration-zinc-300 underline-offset-2">
-              {r.request_id}
-            </a>
+        <li key={r.request_id} className="rounded-xl border border-line p-4">
+          <div className="flex items-center justify-between gap-3 text-xs text-zinc-500">
             <RowStatus request={r} nowNs={nowNs} />
+            <span>{formatUtc(r.created_at_ns)}</span>
           </div>
-          <p className="mt-1 text-sm">
-            <span className="font-medium">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Mono>{r.recipient}</Mono>
+          <p className="mt-2 text-sm">
+            <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Mono>{r.recipient}</Mono>
+            <Note request={r} />
           </p>
-          <p className="mt-1 text-xs text-zinc-500">
-            {formatUtc(r.created_at_ns)} · <span className="font-mono">{r.reason_code}</span>
-          </p>
+          <p className="mt-2 text-sm text-zinc-600">{outcomeLine(r, nowNs)}</p>
+          <div className="mt-2 text-right">
+            <OpenLink request={r} />
+          </div>
         </li>
       ))}
     </ul>
@@ -154,35 +146,32 @@ function ActivityList({ requests, metadataFor, nowNs }: ActivityProps) {
 function ActivityTable({ requests, metadataFor, nowNs }: ActivityProps) {
   return (
     <div className="-mx-6 hidden overflow-x-auto sm:block">
-      <table className="w-full min-w-[40rem] text-left text-sm" data-testid="activity">
+      <table className="w-full min-w-[44rem] text-left text-sm" data-testid="activity">
         <thead className="text-xs text-zinc-500">
-          <tr className="border-b border-zinc-100">
-            <th className="px-6 py-2 font-medium">Requested (UTC)</th>
-            <th className="px-2 py-2 font-medium">Request</th>
-            <th className="px-2 py-2 font-medium">Amount</th>
-            <th className="px-2 py-2 font-medium">To</th>
-            <th className="px-2 py-2 font-medium">Status</th>
-            <th className="px-6 py-2 font-medium">Reason</th>
+          <tr className="border-b border-line">
+            <th className="px-6 py-2 font-medium">When (UTC)</th>
+            <th className="px-2 py-2 font-medium">Payment</th>
+            <th className="px-2 py-2 font-medium">Result</th>
+            <th className="px-2 py-2 font-medium">Why</th>
+            <th className="px-6 py-2 font-medium">
+              <span className="sr-only">Details</span>
+            </th>
           </tr>
         </thead>
         <tbody>
           {requests.map((r) => (
             <tr key={r.request_id} className="border-b border-zinc-50 align-top" data-request={r.request_id}>
-              <td className="whitespace-nowrap px-6 py-2 text-zinc-600">{formatUtc(r.created_at_ns).replace(" UTC", "")}</td>
-              <td className="px-2 py-2">
-                <a href={requestLink(r.request_id)} className="font-mono text-zinc-900 underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-600">
-                  {r.request_id}
-                </a>
+              <td className="px-6 py-3 whitespace-nowrap text-zinc-600">{formatUtc(r.created_at_ns).replace(" UTC", "")}</td>
+              <td className="px-2 py-3">
+                <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Mono>{r.recipient}</Mono>
+                <Note request={r} />
               </td>
-              <td className="whitespace-nowrap px-2 py-2 font-medium">{formatAmount(r.amount, metadataFor(r.token))}</td>
-              <td className="px-2 py-2 font-mono">{r.recipient}</td>
-              <td className="px-2 py-2">
+              <td className="px-2 py-3">
                 <RowStatus request={r} nowNs={nowNs} />
               </td>
-              <td className="px-6 py-2">
-                <abbr title={explainReason(r.reason_code)} className="font-mono text-xs text-zinc-600 no-underline">
-                  {r.reason_code}
-                </abbr>
+              <td className="px-2 py-3 text-zinc-600">{outcomeLine(r, nowNs)}</td>
+              <td className="px-6 py-3 text-right">
+                <OpenLink request={r} />
               </td>
             </tr>
           ))}
@@ -192,7 +181,7 @@ function ActivityTable({ requests, metadataFor, nowNs }: ActivityProps) {
   );
 }
 
-/** Read-only overview of the vault: budgets, open requests, recent activity and the policy. */
+/** The vault's owner view: money, what waits for them, what the agent did, and the rules. Read only. */
 export function Dashboard({ config }: { config: AppConfig }) {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
   const [older, setOlder] = useState<PaymentRequest[]>([]);
@@ -222,18 +211,20 @@ export function Dashboard({ config }: { config: AppConfig }) {
 
   if (error && !snapshot) {
     return (
-      <Notice tone="bad" title="Could not read the vault from the chain">
+      <Notice tone="bad" title="Could not read the vault right now">
         <p>{error}</p>
       </Notice>
     );
   }
-  if (!snapshot) return <p className="text-sm text-zinc-500">Reading the vault from the chain…</p>;
+  if (!snapshot) return <p className="text-sm text-zinc-500">Reading your vault…</p>;
 
   const { config: vault, policy, tokens, nowNs } = snapshot;
   const requests = [...snapshot.requests, ...older];
   const waiting = waitingForOwner(requests, nowNs);
   const metadataFor = (token: string) => tokens.find((t) => t.policy.token === token)?.metadata ?? null;
   const canLoadMore = requests.length < vault.request_count;
+  const first = tokens[0];
+  const fmtFirst = (units: string) => formatAmount(units, first?.metadata ?? null);
 
   const loadMore = async () => {
     try {
@@ -244,13 +235,14 @@ export function Dashboard({ config }: { config: AppConfig }) {
   };
 
   return (
-    <div className="space-y-6" data-testid="dashboard">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-10" data-testid="dashboard">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight">Vault overview</h1>
-          <p className="text-xs text-zinc-500">
-            Chain time {formatUtc(nowNs.toString())}. Refreshes every {REFRESH_MS / 1000} s.
-          </p>
+          <h1 className="flex items-center gap-3 font-display text-3xl font-bold tracking-tight">
+            Your vault
+            <span data-testid="vault-state">{vault.paused ? <Badge tone="bad">Paused</Badge> : <Badge tone="good">Active</Badge>}</span>
+          </h1>
+          <p className="mt-1 text-sm text-zinc-600">What your agent has spent, and what is waiting for you. Updates every {REFRESH_MS / 1000} seconds.</p>
         </div>
         <Button variant="secondary" onClick={() => void refresh()} disabled={loading} testId="refresh">
           {loading ? "Reading…" : "Refresh"}
@@ -258,144 +250,176 @@ export function Dashboard({ config }: { config: AppConfig }) {
       </div>
 
       {error ? (
-        <Notice tone="bad" title="The last refresh failed; showing the previous read">
+        <Notice tone="bad" title="The last update failed, so this is the previous reading">
           <p>{error}</p>
         </Notice>
       ) : null}
       {vault.vault_id !== config.vaultId || vault.network !== config.network ? (
-        <Notice tone="bad" title="The RPC answered for a different vault or network">
+        <Notice tone="bad" title="This data is for a different vault or network">
           <p>
             Expected <Mono>{config.vaultId}</Mono> on {config.network}, got <Mono>{vault.vault_id}</Mono> on {vault.network}. Do not trust these numbers.
           </p>
         </Notice>
       ) : null}
-
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Waiting for you" testId="waiting-count">
-          {waiting.length}
-          <span className="ml-1 text-xs font-normal text-zinc-500">of at most {policy.max_open_approvals}</span>
-        </Stat>
-        <Stat label="Vault" testId="vault-state">
-          {vault.paused ? <Badge tone="bad">Paused</Badge> : <Badge tone="good">Active</Badge>}
-        </Stat>
-        <Stat label="Policy version">{vault.policy_version}</Stat>
-        <Stat label="Stored requests">{vault.request_count}</Stat>
-      </div>
-
       {vault.paused ? (
         <Notice tone="warn" title="The vault is paused">
-          <p>No new payments are accepted or executed until the owner unpauses it.</p>
+          <p>It will not accept or pay anything until the owner unpauses it.</p>
         </Notice>
       ) : null}
 
-      {tokens.map((t) => (
-        <TokenCard key={t.policy.token} token={t} nowNs={nowNs} />
-      ))}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {tokens.map((t) => (
+          <MoneyStats key={t.policy.token} token={t} nowNs={nowNs} />
+        ))}
+        <Stat label="Waiting for your OK" testId="waiting-count" foot={`At most ${policy.max_open_approvals} can wait at once.`}>
+          {waiting.length}
+        </Stat>
+      </div>
 
-      <Card>
-        <h2 className="text-sm font-semibold text-zinc-700">Waiting for your decision</h2>
+      <section className="space-y-4" aria-label="Waiting for your OK">
+        <SectionHeading title="Waiting for your OK" />
         {waiting.length === 0 ? (
-          <p className="mt-2 text-sm text-zinc-600">Nothing to decide. Payments within the auto limit never wait.</p>
+          <Card>
+            <p className="text-sm text-zinc-600">
+              Nothing is waiting for you.
+              {first ? ` Payments up to ${fmtFirst(first.policy.auto_limit)} are paid without asking.` : ""}
+            </p>
+          </Card>
         ) : (
-          <ul className="mt-3 space-y-2" data-testid="pending-list">
+          <ul className="space-y-2" data-testid="pending-list">
             {waiting.map((r) => (
               <li key={r.request_id}>
                 <a
                   href={requestLink(r.request_id)}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-200 p-3 transition hover:border-zinc-400 focus-visible:outline-2 focus-visible:outline-zinc-700"
+                  className="group flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-surface p-5 transition duration-300 ease-fluid hover:border-brand/40 focus-visible:outline-2 focus-visible:outline-brand"
                 >
                   <span className="min-w-0">
-                    <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Mono>{r.recipient}</Mono>
-                    <span className="block text-xs text-zinc-500">
-                      <Mono>{r.request_id}</Mono> · expires {formatRelative(Number((BigInt(r.expires_at_ns) - nowNs) / 1_000_000_000n))}
+                    <span className="block text-base">
+                      <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Mono>{r.recipient}</Mono>
+                    </span>
+                    {r.reason ? <span className="mt-0.5 block text-sm text-zinc-600">for &ldquo;{r.reason}&rdquo;</span> : null}
+                    <span className="mt-1 block text-xs text-zinc-500">
+                      Expires {formatRelative(Number((BigInt(r.expires_at_ns) - nowNs) / 1_000_000_000n))} · <Mono>{r.request_id}</Mono>
                     </span>
                   </span>
-                  <StatusBadge status={r.status} />
+                  <span className="inline-flex items-center gap-2 rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white transition duration-300 ease-fluid group-hover:bg-brand-strong">
+                    Review
+                    <ArrowRight size={14} weight="bold" aria-hidden="true" />
+                  </span>
                 </a>
               </li>
             ))}
           </ul>
         )}
-      </Card>
+      </section>
 
-      <Card>
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold text-zinc-700">Agent activity</h2>
-          <p className="text-xs text-zinc-500">
-            {requests.length} of {vault.request_count} stored requests, newest first
-          </p>
-        </div>
-        <div className="mt-3">
+      <section className="space-y-4" aria-label="What your agent did">
+        <SectionHeading title="What your agent did">
+          {requests.length < vault.request_count ? `Newest ${requests.length} of ${vault.request_count}` : "Newest first"}
+        </SectionHeading>
+        <Card>
           {requests.length === 0 ? (
-            <p className="text-sm text-zinc-600">No stored requests yet.</p>
+            <p className="text-sm text-zinc-600">Your agent has not asked for anything yet.</p>
           ) : (
             <>
               <ActivityTable requests={requests} metadataFor={metadataFor} nowNs={nowNs} />
               <ActivityList requests={requests} metadataFor={metadataFor} nowNs={nowNs} />
             </>
           )}
-        </div>
-        {canLoadMore ? (
-          <div className="mt-3">
-            <Button variant="secondary" onClick={() => void loadMore()} testId="load-more">
-              Show older requests
-            </Button>
-          </div>
-        ) : null}
-        <p className="mt-3 text-xs leading-relaxed text-zinc-500">
-          Blocked requests are never stored, so they do not appear here; the vault only emits an event for them. Transaction hashes need an
-          indexer, which is not built yet.
-        </p>
-      </Card>
+          {canLoadMore ? (
+            <div className="mt-4">
+              <Button variant="secondary" onClick={() => void loadMore()} testId="load-more">
+                Show older payments
+              </Button>
+            </div>
+          ) : null}
+          <p className="mt-4 text-xs leading-relaxed text-zinc-500">Refused requests are never saved, so they do not show up here.</p>
+        </Card>
+      </section>
 
-      <Card>
-        <h2 className="text-sm font-semibold text-zinc-700">Who can do what</h2>
-        <dl className="mt-3 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-xs text-zinc-500">Owner: approves, rejects, pauses, changes policy</dt>
-            <dd>
-              <AccountLink config={config} account={vault.owner} />
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-zinc-500">Agents: can only request payments</dt>
-            <dd className="space-y-1">
-              {vault.agents.map((a) => (
-                <div key={a}>
-                  <AccountLink config={config} account={a} />
-                </div>
-              ))}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-zinc-500">Allowed recipients</dt>
-            <dd className="space-y-1" data-testid="recipients">
-              {policy.recipients.map((r) => (
-                <div key={r}>
-                  <Mono>{r}</Mono>
-                </div>
-              ))}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-zinc-500">Limits</dt>
-            <dd className="text-zinc-700">
-              Approvals expire after {Math.round(policy.approval_ttl_sec / 60)} min. At most {policy.max_open_approvals} open approvals and{" "}
-              {policy.max_requests_per_day} stored requests per day.
-            </dd>
-          </div>
-          <div className="sm:col-span-2">
-            <dt className="text-xs text-zinc-500">Vault contract</dt>
-            <dd>
-              <AccountLink config={config} account={vault.vault_id} />
-            </dd>
-          </div>
-        </dl>
-      </Card>
+      <section className="space-y-4" aria-label="Your rules">
+        <SectionHeading title="Your rules" />
+        <Card>
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            {tokens.map((t) => {
+              const fmt = (units: string) => formatAmount(units, t.metadata);
+              return (
+                <Fragment key={t.policy.token}>
+                  <div>
+                    <dt className="text-zinc-500">Paid instantly</dt>
+                    <dd className="mt-0.5 font-semibold">up to {fmt(t.policy.auto_limit)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-500">Needs your OK</dt>
+                    <dd className="mt-0.5 font-semibold">
+                      over {fmt(t.policy.auto_limit)}, up to {fmt(t.policy.hard_tx_limit)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-500">Most it can spend in a day</dt>
+                    <dd className="mt-0.5 font-semibold">{fmt(t.policy.daily_limit)}</dd>
+                  </div>
+                </Fragment>
+              );
+            })}
+            <div>
+              <dt className="text-zinc-500">It can only pay</dt>
+              <dd className="mt-0.5 space-y-0.5" data-testid="recipients">
+                {policy.recipients.map((r) => (
+                  <div key={r}>
+                    <Mono>{r}</Mono>
+                  </div>
+                ))}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-zinc-500">Requests that wait for you expire after</dt>
+              <dd className="mt-0.5 font-semibold">{Math.round(policy.approval_ttl_sec / 60)} min</dd>
+            </div>
+            <div>
+              <dt className="text-zinc-500">Most requests per day</dt>
+              <dd className="mt-0.5 font-semibold">{policy.max_requests_per_day}</dd>
+            </div>
+          </dl>
+        </Card>
+      </section>
+
+      <section className="space-y-4" aria-label="Who is who">
+        <SectionHeading title="Who is who" />
+        <Card>
+          <dl className="grid grid-cols-1 gap-5 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-zinc-500">Owner: approves, rejects, pauses and changes the rules</dt>
+              <dd className="mt-0.5">
+                <AccountLink config={config} account={vault.owner} />
+              </dd>
+            </div>
+            <div>
+              <dt className="text-zinc-500">Agent: can only ask the vault to pay</dt>
+              <dd className="mt-0.5 space-y-0.5">
+                {vault.agents.map((a) => (
+                  <div key={a}>
+                    <AccountLink config={config} account={a} />
+                  </div>
+                ))}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-zinc-500">The vault itself</dt>
+              <dd className="mt-0.5">
+                <AccountLink config={config} account={vault.vault_id} />
+              </dd>
+            </div>
+          </dl>
+          <p className="mt-5 border-t border-line pt-4 text-xs text-zinc-500">
+            Rules version {vault.policy_version} · {vault.request_count} requests saved · read at {formatUtc(nowNs.toString())}
+          </p>
+        </Card>
+      </section>
 
       <p className="text-xs leading-relaxed text-zinc-500">
-        Everything here is read directly from <Mono>{config.rpcUrl}</Mono> (final blocks) and checked against the vault&apos;s formats. A
-        compromised RPC could show false numbers, but it cannot make the vault pay: payments follow the contract&apos;s own state.
+        Everything here is read straight from the NEAR blockchain. A bad connection could show wrong numbers, but it cannot move money: only the
+        vault&apos;s own rules decide what is paid. Source: <Mono>{config.rpcUrl}</Mono>
       </p>
     </div>
   );

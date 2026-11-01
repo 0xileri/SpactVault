@@ -68,10 +68,10 @@ export function assess({ config, snapshot, signerAvailable, signerAccountId, exe
   const { config: vault, request } = snapshot;
 
   if (vault.vault_id !== config.vaultId) {
-    add("VAULT_MISMATCH", `The RPC answered for ${vault.vault_id}, not ${config.vaultId}.`, true, true);
+    add("VAULT_MISMATCH", `The data came back for ${vault.vault_id}, not ${config.vaultId}. Do not trust it.`, true, true);
   }
   if (vault.network !== config.network) {
-    add("NETWORK_MISMATCH", `The vault says it is on "${vault.network}" but this page is set up for "${config.network}".`, true, true);
+    add("NETWORK_MISMATCH", `The vault says it is on ${vault.network}, but this page is set up for ${config.network}. Do not trust it.`, true, true);
   }
 
   let computedHash: string | null = null;
@@ -92,35 +92,35 @@ export function assess({ config, snapshot, signerAvailable, signerAccountId, exe
       return { computedHash, hashMatches, expiresInSec, problems, canApprove: false, canReject: false };
     }
     if (request.status !== "AWAITING_APPROVAL") {
-      add("NOT_AWAITING", "Already approved. It can still be rejected until it executes.", true, false);
+      add("NOT_AWAITING", "Already approved. You can still reject it until it is sent.", true, false);
     }
-    if (expiresInSec < 0) add("EXPIRED", "The request has expired. Nothing can execute it.", true, false);
+    if (expiresInSec < 0) add("EXPIRED", "This request has expired, so it can no longer be paid.", true, false);
     if (request.policy_version !== vault.policy_version) {
-      add("POLICY_CHANGED", "The policy changed after this request was made. The agent must create a new request.", true, false);
+      add("POLICY_CHANGED", "Your rules changed after this request was made, so it cannot be approved. Your agent needs to ask again.", true, false);
     }
     if (!hashMatches) {
       add(
         "HASH_MISMATCH",
-        "The terms shown here do not hash to the value the vault stores. Do not approve: the data may have been altered on its way to you.",
+        "What is shown here does not match what the vault saved. Do not approve: it may have been changed on its way to you.",
         true,
         false,
       );
     }
     if (executeNow && vault.paused) {
-      add("VAULT_PAUSED", "The vault is paused, so payment would fail. Unpause it or approve without paying now.", true, false);
+      add("VAULT_PAUSED", "The vault is paused, so it cannot pay right now. Unpause it, or untick \"Pay right away\".", true, false);
     }
     if (executeNow && snapshot.budget && parseU128(request.amount) > parseU128(snapshot.budget.available)) {
-      add("BUDGET_INSUFFICIENT", "Not enough of today's budget is left to pay this now.", true, false);
+      add("BUDGET_INSUFFICIENT", "There is not enough left of today's limit to pay this now.", true, false);
     }
     if (!snapshot.token) {
-      add("TOKEN_METADATA_MISSING", "Could not read the token's symbol and decimals. Amounts are shown in base units only.", false, false);
+      add("TOKEN_METADATA_MISSING", "Could not read the token's name and decimals, so amounts are shown in raw units.", false, false);
     }
   }
 
   if (!signerAvailable) add("NO_SIGNER", "No wallet is configured for this network.", true, true);
-  else if (!signerAccountId) add("NOT_CONNECTED", "Connect the owner's wallet to decide.", true, true);
+  else if (!signerAccountId) add("NOT_CONNECTED", "Connect the owner's wallet to approve or reject.", true, true);
   else if (signerAccountId !== vault.owner) {
-    add("NOT_OWNER", `Connected as ${signerAccountId}, but only the owner ${vault.owner} can decide.`, true, true);
+    add("NOT_OWNER", `You are connected as ${signerAccountId}, but only the owner ${vault.owner} can decide.`, true, true);
   }
 
   return {

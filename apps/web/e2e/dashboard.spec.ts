@@ -23,14 +23,17 @@ test("the dashboard shows what is on chain: balance, budget, waiting requests an
   await expect(waiting).toContainText("e2e-dash");
 
   const activity = page.getByTestId("activity");
-  await expect(activity.locator('[data-request="e2e-dash"]')).toContainText("Awaiting approval");
-  await expect(activity.locator('[data-request="e2e-dash"]')).toContainText("REQUIRES_OWNER_APPROVAL");
+  // each row says what happened and why, in words
+  await expect(activity.locator('[data-request="e2e-dash"]')).toContainText("Waiting for you");
+  await expect(activity.locator('[data-request="e2e-dash"]')).toContainText("Over your instant limit, so it waits for your OK.");
+  await expect(activity.locator('[data-request="e2e-dash"]')).toContainText("CDN bandwidth");
   await expect(activity.locator('[data-request="demo-auto-1"]')).toContainText("Paid");
   await expect(activity.locator('[data-request="demo-auto-1"]')).toContainText("3 TUSD");
+  await expect(activity.locator('[data-request="demo-auto-1"]')).toContainText("sent without asking you");
   await expect(page.getByTestId("recipients")).toContainText(f.api_id);
 
   // a row opens that request's approval page
-  await activity.getByRole("link", { name: "e2e-dash" }).click();
+  await activity.getByRole("link", { name: "Open e2e-dash" }).click();
   await expect(page.getByTestId("amount")).toHaveText("13 TUSD");
 });
 
@@ -51,6 +54,6 @@ test("budget numbers that do not add up are flagged, not shown", async ({ page }
   );
 
   await page.goto("/?page=overview");
-  await expect(page.getByText("Budget numbers from the RPC do not add up")).toBeVisible();
+  await expect(page.getByText("Today's spending numbers do not add up")).toBeVisible();
   await expect(page.getByTestId(`available-${f.token_id}`)).toHaveCount(0);
 });
