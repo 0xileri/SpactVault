@@ -229,6 +229,19 @@ The owner made these choices on 2026-10-30:
 - **Sites.** Switching a site to mainnet takes three variables: `VITE_NEAR_NETWORK`, `VITE_NEAR_RPC_URL` and `VITE_VAULT_ID`. Railway takes them as service variables, and GitHub Pages as repository variables. On mainnet the footer says real funds are involved.
 - **Outcome (2026-11-01).** The owner deployed `vault.0xileri.near` with `0xileri.near` as deployer and owner. Read back the same day: no vault keys, network `mainnet`, 5 USDC (STATUS "Mainnet deployment").
 
+## ADR-029: The landing page explains itself in plain words (2026-11-01)
+
+The owner found the site confusing. The page leaned on terms a newcomer has to decode ("vault contract", "on chain", "RPC", "payee", "auto limit", "hard cap"). Its hero was an abstract gate with posts, a dotted track and rules in shorthand ("≤ 10 TUSD paid"). The rule cards then replayed the same idea in a second visual language.
+
+- **Hero.** The headline says what the product does: "Give your AI agent a budget, not your wallet." The paragraph under it gives the three outcomes in one breath. "Autonomous spending. Human rules." stays as the brand tagline in the footer and on the share card.
+- **Hero visual: `RequestFeed` replaces `GateFlow`.** It is a list of three example requests ("Pay 3 TUSD for a search API call"). Each one shows "Checking rules", then its outcome in words, with the reason underneath: "Under your 10 TUSD instant limit", "Over 10 TUSD, so it asks you first" (Approve is tapped, then it is paid), "Over your 30 TUSD limit per payment". It follows the ADR-026 motion rules: CSS keyframes only, a 12 second loop, paused off screen, and with reduced motion one still frame that shows all three outcomes. The amounts still come from the vault's limits (`exampleAmounts`, renamed from `gateExample`).
+- **New "How it works" section.** Three numbered steps (you fill the vault, your agent asks, the vault checks your rules) say where the money sits and why the agent cannot skip the rules. The main button scrolls to it.
+- **Rule cards are static.** `OutcomeMotion` is gone: the hero already animates the three outcomes, and a second animation of the same thing added noise. Each card has an icon, a plain title (Paid instantly, Needs your OK, Refused), the vault's numbers and one sentence on what happens next.
+- **Words.** "Auto limit" becomes "instant limit", "hard cap" becomes "limit per payment", "payee" becomes "anyone on the list", and "blocked" becomes "refused". The live stats read "Money in the vault", "Spent today", "Payments made" and "Waiting for your OK". The Security Lab line counts the attacks that pass ("16 attacks tested automatically on every code change"), so it no longer reads like a failing score ("13 of 18").
+- **Share card.** The subtitle, the outcome pills and the network note ("Live on NEAR mainnet") match. `og-image.png` and `brand/github-social-preview.png` are regenerated.
+
+Unchanged: the brand, the palette, a short page (one small section added), and every number read from the chain. The dashboard, approval page and Security Lab are not part of this pass.
+
 ## Open questions (from AGENTS.md section 17)
 
 - [x] Official `HACKATHON.md`: added at the repo root (owner copy, 2026-10-23).

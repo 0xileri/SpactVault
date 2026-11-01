@@ -26,7 +26,7 @@ export function shareImageTags(siteUrl: string | undefined): ShareTag[] {
     { attr: "property", key: "og:image", content: image },
     { attr: "property", key: "og:image:width", content: "1200" },
     { attr: "property", key: "og:image:height", content: "630" },
-    { attr: "property", key: "og:image:alt", content: "SpactVault: autonomous spending, human rules. Paid at once, waits for you, or blocked." },
+    { attr: "property", key: "og:image:alt", content: "SpactVault: autonomous spending, human rules. Paid instantly, waits for your OK, or refused." },
     { attr: "name", key: "twitter:image", content: image },
   ];
 }
