@@ -1,4 +1,4 @@
-import { parseU128, type BudgetView, type FtMetadata, type PaymentRequest, type Status, type TokenPolicy } from "@spact/shared";
+import { explainReason, parseU128, type BudgetView, type FtMetadata, type PaymentRequest, type Status, type TokenPolicy } from "@spact/shared";
 
 const NS_PER_DAY = 86_400_000_000_000n;
 
@@ -51,4 +51,33 @@ export function isLapsed(request: PaymentRequest, nowNs: bigint): boolean {
 /** Requests the owner can still act on, oldest first so the most urgent is on top. */
 export function waitingForOwner(requests: PaymentRequest[], nowNs: bigint): PaymentRequest[] {
   return requests.filter((r) => OPEN.has(r.status) && !isLapsed(r, nowNs)).reverse();
+}
+
+/** What happened to a stored request and why, in one plain sentence for the owner. */
+export function outcomeLine(request: PaymentRequest, nowNs: bigint): string {
+  if (isLapsed(request, nowNs)) return "Time ran out before it was paid. Nothing was sent.";
+  switch (request.reason_code) {
+    case "AUTO_WITHIN_POLICY":
+      return "Under your instant limit, so it was paid without asking you.";
+    case "REQUIRES_OWNER_APPROVAL":
+      return "Over your instant limit, so it waits for your OK.";
+    case "OWNER_APPROVED":
+      return "You approved it. Your agent can now send it.";
+    case "OWNER_DENIED":
+      return "You rejected it. Nothing was sent.";
+    case "REQUEST_EXPIRED":
+      return "Nobody approved it in time. Nothing was sent.";
+    case "APPROVAL_EXPIRED":
+      return "Approved, but not sent before it expired. Nothing was sent.";
+    case "TRANSFER_PENDING":
+      return "Being sent now.";
+    case "SETTLED":
+      return request.approved_by ? "You approved it, and it was sent." : "Under your instant limit, so it was sent without asking you.";
+    case "SOURCE_TRANSFER_FAILED":
+      return "The transfer failed, so nothing was spent.";
+    case "POLICY_VERSION_CHANGED":
+      return "Your rules changed after it was made, so it can no longer go through.";
+    default:
+      return explainReason(request.reason_code);
+  }
 }

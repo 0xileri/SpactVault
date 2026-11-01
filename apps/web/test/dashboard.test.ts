@@ -1,7 +1,7 @@
 import type { BudgetView, PaymentRequest, TokenPolicy } from "@spact/shared";
 import { describe, expect, it } from "vitest";
 
-import { budgetProblem, budgetResetNs, isLapsed, usedPercent, waitingForOwner } from "../src/dashboard.js";
+import { budgetProblem, budgetResetNs, isLapsed, outcomeLine, usedPercent, waitingForOwner } from "../src/dashboard.js";
 
 const policy: TokenPolicy = { token: "token.test.near", auto_limit: "10000000", hard_tx_limit: "30000000", daily_limit: "50000000" };
 const budget: BudgetView = { token: "token.test.near", day: 20393, daily_limit: "50000000", executed: "3000000", pending: "25000000", available: "22000000" };
@@ -61,5 +61,36 @@ describe("open requests", () => {
     expect(waitingForOwner(requests, now).map((r) => r.request_id)).toEqual(["approved", "newest"]);
     expect(isLapsed(requests[2] as PaymentRequest, now)).toBe(true);
     expect(isLapsed(request("done", "EXPIRED", 1n), now)).toBe(false);
+  });
+});
+
+describe("outcomeLine", () => {
+  const now = 1_000n;
+  const later = 2_000n;
+  const settled = (approvedBy: string | null): PaymentRequest => ({
+    ...request("r", "SETTLED", later),
+    reason_code: "SETTLED",
+    approved_by: approvedBy,
+  });
+
+  it("says in plain words why a request ended the way it did", () => {
+    expect(outcomeLine(request("w", "AWAITING_APPROVAL", later), now)).toBe("Over your instant limit, so it waits for your OK.");
+    expect(outcomeLine({ ...request("d", "DENIED", later), reason_code: "OWNER_DENIED" }, now)).toBe("You rejected it. Nothing was sent.");
+    expect(outcomeLine({ ...request("f", "TRANSFER_FAILED", later), reason_code: "SOURCE_TRANSFER_FAILED" }, now)).toMatch(/nothing was spent/);
+  });
+
+  it("tells a payment the owner approved from one paid without asking", () => {
+    expect(outcomeLine(settled("owner.test.near"), now)).toBe("You approved it, and it was sent.");
+    expect(outcomeLine(settled(null), now)).toBe("Under your instant limit, so it was sent without asking you.");
+  });
+
+  it("says when time ran out, even if the vault still lists the request as open", () => {
+    expect(outcomeLine(request("old", "AWAITING_APPROVAL", now - 1n), now)).toMatch(/^Time ran out/);
+  });
+
+  it("falls back to the vault's own explanation for anything else", () => {
+    expect(outcomeLine({ ...request("x", "AWAITING_APPROVAL", later), reason_code: "INVALID_STATE" }, now)).toBe(
+      "The request is not in a state that allows this action.",
+    );
   });
 });

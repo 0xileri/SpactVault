@@ -17,7 +17,7 @@ const TONES: Record<Tone, string> = {
 };
 
 export function Badge({ tone, children }: { tone: Tone; children: ReactNode }) {
-  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${TONES[tone]}`}>{children}</span>;
+  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ring-1 ${TONES[tone]}`}>{children}</span>;
 }
 
 export function Notice({ tone, title, children }: { tone: Tone; title: string; children?: ReactNode }) {
@@ -41,14 +41,14 @@ const STATUS_TONE: Record<Status, Tone> = {
 };
 
 const STATUS_LABEL: Record<Status, string> = {
-  BLOCKED: "Blocked",
-  AWAITING_APPROVAL: "Awaiting approval",
+  BLOCKED: "Refused",
+  AWAITING_APPROVAL: "Waiting for you",
   APPROVED: "Approved",
   DENIED: "Rejected",
   EXPIRED: "Expired",
-  TRANSFER_PENDING: "Transfer pending",
+  TRANSFER_PENDING: "Sending",
   SETTLED: "Paid",
-  TRANSFER_FAILED: "Transfer failed",
+  TRANSFER_FAILED: "Failed",
 };
 
 export function StatusBadge({ status }: { status: Status }) {
@@ -94,7 +94,7 @@ export function Button({
   testId?: string;
 }) {
   const styles = {
-    primary: "bg-emerald-700 text-white hover:bg-emerald-800 focus-visible:outline-emerald-700",
+    primary: "bg-brand text-white hover:bg-brand-strong focus-visible:outline-brand",
     danger: "bg-white text-rose-700 ring-1 ring-rose-300 hover:bg-rose-50 focus-visible:outline-rose-700",
     secondary: "bg-surface text-zinc-800 ring-1 ring-line hover:ring-zinc-300 focus-visible:outline-zinc-700",
   }[variant];

@@ -93,16 +93,16 @@ pnpm install --frozen-lockfile
 scripts/dev-sandbox.sh
 ```
 
-1. Wait for `Open http://localhost:5173/?request=demo-approve-1` and open it. You see **25 TUSD to api.test.near**, status **Awaiting approval**, the agent's note, the policy (auto up to 10 TUSD, at most 30 TUSD per payment, **47 TUSD of 50** left today), and a green **Hash check passed** box.
+1. Wait for `Open http://localhost:5173/?request=demo-approve-1` and open it. You see **25 TUSD to api.test.near**, status **Waiting for you**, the agent's note, why it waits (over the **10 TUSD instant limit**), a green **Safety check passed** box, and **47 TUSD of 50** left to spend today.
 2. Click **Connect Local sandbox signer**. The header shows `owner.test.near`.
-3. Click **Approve and pay**. You see **Confirmed on chain: approved and paid** with a transaction hash, the status turns **Paid**, and the budget drops to **22 TUSD of 50**.
-4. Open http://localhost:5173/?page=overview, the dashboard. The demo request is gone from **Waiting for your decision**, it shows as **Paid** under **Agent activity**, and the TUSD card shows **22 TUSD of 50 TUSD left today** and **Vault holds 972 TUSD**.
+3. Click **Approve and pay**. You see **Done: approved and paid** with a transaction hash, the status turns **Paid**, and the page says **You approved it, and it was sent.**
+4. Open http://localhost:5173/?page=overview, the dashboard. Nothing is **Waiting for your OK**, the demo request shows as **Paid** under **What your agent did**, **Left to spend today** shows **22 TUSD of 50 TUSD**, and **Money in the vault** shows **972 TUSD**.
 
-To watch the attacks fail, run `pnpm e2e`. It drives Chromium against the same local setup, and you see `16 passed`. Three of those tests rewrite the RPC response on its way to the page:
+To watch the attacks fail, run `pnpm e2e`. It drives Chromium against the same local setup, and you see `19 passed`. Three of those tests rewrite the RPC response on its way to the page:
 
-- **Recipient changed, hash kept:** the page shows **Hash check failed: do not approve** and the approve button is disabled.
+- **Recipient changed, hash kept:** the page shows **Safety check failed: do not approve** and the approve button is disabled.
 - **Recipient and hash both forged:** the page shows the attacker's terms with a passing check, the owner approves, and the vault refuses with `HASH_MISMATCH`. The test then reads the chain directly: nothing moved and the request still awaits approval.
-- **Budget inflated:** the dashboard sees that the numbers don't add up and shows **Budget numbers from the RPC do not add up** instead of them.
+- **Budget inflated:** the dashboard sees that the numbers don't add up and shows **Today's spending numbers do not add up** instead of them.
 
 ## Deploy to testnet
 

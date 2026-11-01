@@ -242,6 +242,30 @@ The owner found the site confusing. The page leaned on terms a newcomer has to d
 
 Unchanged: the brand, the palette, a short page (one small section added), and every number read from the chain. The dashboard, approval page and Security Lab are not part of this pass.
 
+## ADR-030: The dashboard and approval page explain themselves in plain words too (2026-11-01)
+
+After ADR-029 the owner asked for the same treatment on the dashboard and the approval page. Both still led with things only a developer needs (policy version, stored requests, base units, token contract, "hash", "1 yoctoNEAR", "RPC") and hid what the owner came for.
+
+- **Dashboard ("Your vault").** It is ordered by the owner's questions:
+  - how much is in the vault and how much is left today, with a progress bar and when it resets;
+  - what waits for me: each item has the agent's note and a Review button;
+  - what my agent did: each row says what happened and why, such as "Under your instant limit, so it was sent without asking you" or "Over your instant limit, so it waits for your OK", in place of reason codes like `REQUIRES_OWNER_APPROVAL`;
+  - my rules, and who is who.
+  - Rules version and the request count moved to a small line at the bottom.
+- **`outcomeLine`** (`apps/web/src/dashboard.ts`) writes that sentence from the request's reason code. It tells a payment the owner approved (`approved_by` set) from one paid without asking. It says "Time ran out" for a request the vault still lists as open after its expiry. For any other code it falls back to the vault's own explanation. The MCP server keeps the shared explanations unchanged.
+- **Approval page.** The order is:
+  - "Your agent wants to pay", the amount and the recipient;
+  - the agent's note, marked as unchecked;
+  - why it waits ("over your 1 USDC instant limit") and when it expires;
+  - a **Safety check** (the hash check, renamed and explained);
+  - the decision, with the budget left today and the connect-wallet prompt next to the buttons.
+  - Raw units, token contract, agent account, request ID and the full fingerprint sit in a closed "Technical details" section.
+  - A request that is already decided says "asked to pay" and what happened, instead of showing an expiry and a safety check for a decision that no longer exists.
+- **Words.** Status badges read Waiting for you, Paid, Rejected, Expired, Sending, Failed and Refused. "Pay immediately after approving" becomes "Pay right away". The 1 yoctoNEAR note says that the wallet's main key is needed, so a partly connected app cannot approve. The problem and result messages are rephrased; reason codes stay in brackets where the vault refused something, for debugging.
+- **Buttons.** The primary button is violet like the rest of the site (ADR-027), not green.
+
+The checks are unchanged: the hash comparison, owner and network checks, and every refusal path work as before, and the e2e attacks still pass.
+
 ## Open questions (from AGENTS.md section 17)
 
 - [x] Official `HACKATHON.md`: added at the repo root (owner copy, 2026-10-23).
