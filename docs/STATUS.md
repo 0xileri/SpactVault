@@ -91,7 +91,7 @@ Deployed by the owner with `scripts/deploy-testnet.sh spact-ileri2.testnet 0xile
 | `scripts/security-report.sh` (every suite, then the report) | 180 tests in 10 suites passed; report: 13 cases passed on a local chain, 3 unit only (T07, T10, T15), 2 not covered (T13, T14, P1) |
 | `pnpm notifier:sandbox` (built notifier, local sandbox, mock Bot API) | 4 passed: links only the private chat with the terminal's code (group, wrong code and forged button ignored); alert with exact terms and the approval page as the only link; follow-up after the owner approves and pays; after a restart no repeats, and a new request is alerted with the link in its note defanged |
 | `pnpm mcp:sandbox` (built MCP server over stdio, local sandbox) | 11 passed: two tools only; auto payment settles; larger request waits, then is paid after the owner approves; hard cap blocked; T18 prompt-injected request to an unlisted account blocked; duplicate id not paid twice; bad input sends nothing; startup refused with a full-access key, a key for another contract, or a missing key |
-| `pnpm e2e` (Chromium, local sandbox; the agent signs with its function-call key) | 19 passed: the landing page states the vault's limits as read from its policy, its hero animation uses amounts from those limits, its live numbers match the chain, and it fits a 390 px screen; the hero animation plays paid, waiting and blocked in turn, each rule card loops on its own clock, both pause off screen, sections fade in as they are reached, and with reduced motion every animation is one still frame and everything shows at once; the published site has a working skip link, a Privacy and terms page and a branded 404; the production build under `/Spact/` with no vault serves the landing page and the Security Lab, says no vault is connected elsewhere, carries share-card tags with absolute URLs, serves its image, and makes no request outside its own host; inside a frame neither site draws anything to click; the Security Lab page shows cases, evidence and the CI run link; a report that contradicts its own evidence is not believed; a missing or broken report is named as such; dashboard matches the chain (balance, budget, waiting request, activity rows); a tampered budget is flagged instead of shown; approve and pay, reject, altered recipient flagged, forged hash refused by the vault, non-owner blocked, foreign-vault link refused, open-request list |
+| `pnpm e2e` (Chromium, local sandbox; the agent signs with its function-call key) | 19 passed: the landing page's headline, its hero example uses amounts from the vault's limits and says why each ends as it does, its main button leads to the three steps, the rules match the policy, its live numbers match the chain, and it fits a 390 px screen; the hero plays paid, waiting for Approve and refused in turn, pauses off screen, sections fade in as they are reached, and with reduced motion the hero is one still frame of all three outcomes and everything shows at once; the published site has a working skip link, a Privacy and terms page and a branded 404; the production build under `/Spact/` with no vault serves the landing page and the Security Lab, says no vault is connected elsewhere, carries share-card tags with absolute URLs, serves its image, and makes no request outside its own host; inside a frame neither site draws anything to click; the Security Lab page shows cases, evidence and the CI run link; a report that contradicts its own evidence is not believed; a missing or broken report is named as such; dashboard matches the chain (balance, budget, waiting request, activity rows); a tampered budget is flagged instead of shown; approve and pay, reject, altered recipient flagged, forged hash refused by the vault, non-owner blocked, foreign-vault link refused, open-request list |
 
 Manual check on a testnet build: the near-connect wallet selector opens with no page errors and lists Meteor, Intear, Ledger, Nightly, Ethereum wallets and NEAR CLI (2026-10-24).
 
@@ -117,6 +117,20 @@ Mainnet preparation (2026-10-30), DECISIONS ADR-028. The owner deployed it on 20
   - limits, payee, agent key, the paid and waiting demo requests, and the owner withdrawing 1 USDC from the locked vault.
 - **USDC contract id:** confirmed by the deploy, which checks the token's metadata on chain before spending, and by the vault's 5 USDC balance (INTEGRATIONS "Mainnet").
 - **Site:** on mainnet the footer says real funds are involved. Switching a site is three variables.
+
+Plain-language landing page (2026-11-01), DECISIONS ADR-029:
+- **Why:** the owner found the site confusing.
+- **What changed:**
+  - a new headline ("Give your AI agent a budget, not your wallet");
+  - a hero that lists three example payments and says in words why each is paid, waits for Approve, or is refused;
+  - a "How it works" section with three steps;
+  - static rule cards in plain words, and plain labels on the live numbers;
+  - an updated share card.
+  - The gate animation and the per-card loops are gone.
+- **Checked:**
+  - lint, typecheck and 33 web unit tests;
+  - 19 of 19 e2e tests on a local sandbox, including the hero's order (paid, then Approve, then refused), pausing off screen and the reduced-motion still frame;
+  - screenshots at 1280 and 390 px, with no horizontal scroll on the phone.
 
 SpactVault brand (2026-10-30), DECISIONS ADR-027:
 - **Name:** the product is SpactVault. The site, share card, 404 page, Telegram link message and MCP tool titles say so; code and package names stay `spact`.

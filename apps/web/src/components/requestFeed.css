@@ -1,0 +1,133 @@
+/*
+ * The hero animation (RequestFeed.tsx). One 12 s cycle, three requests, one after another:
+ *   0-2 s     a small payment arrives, the rules are checked, it is paid
+ *   2.5-6 s   a larger one arrives, it waits, the owner taps Approve, it is paid
+ *   7-8.5 s   one over the cap arrives and is refused
+ *   11-11.6 s everything fades, and the cycle starts again
+ * The base styles are the still frame (reduced motion): all three rows decided, the middle one waiting
+ * for Approve. Every keyframe set states 0% and 100%, so the base styles never leak into the loop.
+ */
+
+.feed {
+  --feed-cycle: 12s;
+  --feed-io: cubic-bezier(0.65, 0, 0.35, 1);
+  --feed-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.feed-check,
+.feed-done-b,
+.feed-why-b-done,
+.feed-tap {
+  opacity: 0;
+}
+.feed-tap {
+  transform: scale(0.4);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .feed-row-a { animation: feed-row-a var(--feed-cycle) var(--feed-out) infinite both; }
+  .feed-row-b { animation: feed-row-b var(--feed-cycle) var(--feed-out) infinite both; }
+  .feed-row-c { animation: feed-row-c var(--feed-cycle) var(--feed-out) infinite both; }
+
+  .feed-check-a { animation: feed-check-a var(--feed-cycle) linear infinite both; }
+  .feed-check-b { animation: feed-check-b var(--feed-cycle) linear infinite both; }
+  .feed-check-c { animation: feed-check-c var(--feed-cycle) linear infinite both; }
+  .feed-pulse { animation: feed-pulse 0.8s ease-in-out infinite alternate; }
+
+  .feed-done-a,
+  .feed-why-a { animation: feed-done-a var(--feed-cycle) var(--feed-out) infinite both; }
+
+  .feed-approve { animation: feed-approve var(--feed-cycle) var(--feed-io) infinite both; }
+  .feed-tap { animation: feed-tap var(--feed-cycle) var(--feed-out) infinite both; }
+  .feed-why-b { animation: feed-why-b var(--feed-cycle) var(--feed-io) infinite both; }
+  .feed-done-b,
+  .feed-why-b-done { animation: feed-done-b var(--feed-cycle) var(--feed-out) infinite both; }
+
+  .feed-done-c { animation: feed-done-c var(--feed-cycle) var(--feed-out) infinite both; }
+  .feed-why-c { animation: feed-why-c var(--feed-cycle) var(--feed-out) infinite both; }
+
+  .feed[data-playing="false"] * {
+    animation-play-state: paused;
+  }
+}
+
+/* rows arrive one by one and leave together */
+@keyframes feed-row-a {
+  0% { opacity: 0; transform: translateY(8px); }
+  4%, 92% { opacity: 1; transform: none; }
+  97%, 100% { opacity: 0; transform: none; }
+}
+@keyframes feed-row-b {
+  0%, 21% { opacity: 0; transform: translateY(8px); }
+  25%, 92% { opacity: 1; transform: none; }
+  97%, 100% { opacity: 0; transform: none; }
+}
+@keyframes feed-row-c {
+  0%, 58% { opacity: 0; transform: translateY(8px); }
+  62%, 92% { opacity: 1; transform: none; }
+  97%, 100% { opacity: 0; transform: none; }
+}
+
+/* "Checking rules" shows for about a second after each row arrives */
+@keyframes feed-check-a {
+  0%, 4% { opacity: 0; }
+  5%, 12% { opacity: 1; }
+  13%, 100% { opacity: 0; }
+}
+@keyframes feed-check-b {
+  0%, 25% { opacity: 0; }
+  26%, 33% { opacity: 1; }
+  34%, 100% { opacity: 0; }
+}
+@keyframes feed-check-c {
+  0%, 62% { opacity: 0; }
+  63%, 70% { opacity: 1; }
+  71%, 100% { opacity: 0; }
+}
+@keyframes feed-pulse {
+  from { opacity: 0.3; }
+  to { opacity: 1; }
+}
+
+/* the small payment: paid */
+@keyframes feed-done-a {
+  0%, 12.5% { opacity: 0; transform: scale(0.9); }
+  14%, 100% { opacity: 1; transform: none; }
+}
+
+/* the larger payment: waits, the owner taps Approve, then it is paid */
+@keyframes feed-approve {
+  0%, 33.5% { opacity: 0; transform: scale(0.9); }
+  35%, 44% { opacity: 1; transform: none; background-color: var(--color-brand); }
+  46% { opacity: 1; transform: scale(0.94); background-color: var(--color-brand-strong); }
+  48.5% { opacity: 1; transform: none; background-color: var(--color-brand-strong); }
+  50%, 100% { opacity: 0; transform: none; background-color: var(--color-brand); }
+}
+@keyframes feed-tap {
+  0%, 44% { opacity: 0; transform: scale(0.4); }
+  46% { opacity: 0.6; transform: scale(1); }
+  49%, 100% { opacity: 0; transform: scale(2.4); }
+}
+@keyframes feed-why-b {
+  0%, 33.5% { opacity: 0; }
+  35%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+@keyframes feed-done-b {
+  0%, 49.5% { opacity: 0; transform: scale(0.9); }
+  51%, 100% { opacity: 1; transform: none; }
+}
+
+/* the payment over the cap: refused, with a short shake */
+@keyframes feed-done-c {
+  0%, 70.5% { opacity: 0; transform: none; }
+  72% { opacity: 1; transform: translateX(0); }
+  73% { transform: translateX(-4px); }
+  74% { transform: translateX(4px); }
+  75% { transform: translateX(-2px); }
+  76%, 100% { opacity: 1; transform: none; }
+}
+@keyframes feed-why-c {
+  0%, 70.5% { opacity: 0; }
+  72%, 100% { opacity: 1; }
+}

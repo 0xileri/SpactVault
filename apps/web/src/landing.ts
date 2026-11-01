@@ -12,9 +12,9 @@ export interface OutcomeRules {
 
 /** For a site with no vault: the rules in words, without numbers. */
 export const GENERIC_RULES: OutcomeRules = {
-  paid: "Small payments, up to your auto limit",
-  waits: "Larger payments, up to your hard cap",
-  blocked: "Over the cap or the daily budget, or to a payee not on your list",
+  paid: "Small payments, up to your instant limit",
+  waits: "Bigger payments, up to your limit per payment",
+  blocked: "Over your limit per payment or per day, or to anyone not on your list",
 };
 
 /** The three outcomes in this vault's own numbers, for one token of its policy. */
@@ -24,8 +24,8 @@ export function outcomeRules(policy: TokenPolicy, metadata: FtMetadata | null): 
   const cap = parseU128(policy.hard_tx_limit);
   return {
     paid: auto === 0n ? "Nothing: every payment waits for you" : `Up to ${fmt(policy.auto_limit)}`,
-    waits: auto >= cap ? "Nothing: everything up to the cap is paid at once" : `Over ${fmt(policy.auto_limit)}, up to ${fmt(policy.hard_tx_limit)}`,
-    blocked: `Over ${fmt(policy.hard_tx_limit)}, past the ${fmt(policy.daily_limit)} daily budget, or to a payee not on the list`,
+    waits: auto >= cap ? "Nothing: everything up to the limit is paid instantly" : `Over ${fmt(policy.auto_limit)}, up to ${fmt(policy.hard_tx_limit)}`,
+    blocked: `Over ${fmt(policy.hard_tx_limit)}, more than ${fmt(policy.daily_limit)} in one day, or to anyone not on the list`,
   };
 }
 
@@ -50,7 +50,7 @@ export function liveCounts(requests: PaymentRequest[], nowNs: bigint, stored: nu
 }
 
 /** Amounts for the hero animation: one payment for each outcome, and the two limits that decide them. */
-export interface GateExample {
+export interface ExampleAmounts {
   paid: string;
   waits: string;
   blocked: string;
@@ -60,13 +60,13 @@ export interface GateExample {
   example: boolean;
 }
 
-export const GENERIC_GATE: GateExample = { paid: "3 TUSD", waits: "12 TUSD", blocked: "45 TUSD", auto: "10 TUSD", cap: "30 TUSD", example: true };
+export const GENERIC_AMOUNTS: ExampleAmounts = { paid: "3 TUSD", waits: "12 TUSD", blocked: "45 TUSD", auto: "10 TUSD", cap: "30 TUSD", example: true };
 
 /** One amount per outcome under this policy, or the generic example when the policy has no such three. */
-export function gateExample(policy: TokenPolicy, metadata: FtMetadata | null): GateExample {
+export function exampleAmounts(policy: TokenPolicy, metadata: FtMetadata | null): ExampleAmounts {
   const auto = parseU128(policy.auto_limit);
   const cap = parseU128(policy.hard_tx_limit);
-  if (!metadata || auto === 0n || auto >= cap) return GENERIC_GATE;
+  if (!metadata || auto === 0n || auto >= cap) return GENERIC_AMOUNTS;
   const fmt = (units: bigint) => formatAmount(units.toString(), metadata);
   const paid = (auto * 3n) / 10n || auto;
   const above = (auto * 12n) / 10n;

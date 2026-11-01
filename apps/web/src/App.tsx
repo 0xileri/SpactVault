@@ -53,7 +53,7 @@ function SiteFooter({ config }: { config: SiteConfig }) {
       <div className="mx-auto flex max-w-6xl flex-wrap items-start justify-between gap-8 px-6 py-12 text-sm">
         <div className="max-w-xs">
           <Logo />
-          <p className="mt-3 text-zinc-600">Autonomous spending. Human rules. A spending firewall for AI agents on NEAR.</p>
+          <p className="mt-3 text-zinc-600">Autonomous spending. Human rules. A budget for your AI agent, enforced on NEAR.</p>
         </div>
         <nav aria-label="Footer" className="flex flex-wrap gap-x-8 gap-y-3">
           <FooterLink href="?page=overview">Dashboard</FooterLink>

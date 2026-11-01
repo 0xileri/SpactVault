@@ -9,31 +9,40 @@ const f = fixture();
 const near = chain(f);
 const tusd = (units: bigint | string) => `${formatUnits(BigInt(units), 6)} TUSD`;
 
-test("the landing page states the vault's own limits and shows what is on chain", async ({ page }) => {
+test("the landing page explains itself in plain words, states the vault's own limits and shows what is on chain", async ({ page }) => {
   await page.route("**/security-report.json", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(REPORT) }));
   const [policy, vaultBalance, budget] = await Promise.all([near.policy(), near.balance(f.vault_id), near.budget()]);
 
   await page.goto("/");
   await expect(page.getByTestId("landing")).toBeVisible();
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("Human rules.");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Give your AI agent a budget, not your wallet.");
+
+  // the hero example uses amounts picked from this vault's limits, and says why each one ends the way it does
+  const feed = page.getByTestId("request-feed");
+  await expect(feed).toContainText(`Under your ${tusd(policy.auto_limit)} instant limit`);
+  await expect(feed).toContainText(`Over ${tusd(policy.auto_limit)}, so it asks you first`);
+  await expect(feed).toContainText(`Over your ${tusd(policy.hard_tx_limit)} limit per payment`);
+  await expect(page.getByTestId("feed-source")).toHaveText("Example amounts, using this vault's real limits.");
+
+  // the main button leads to the three steps
+  await page.getByRole("link", { name: "See how it works" }).click();
+  await expect(page).toHaveURL(/#how$/);
+  await expect(page.getByTestId("steps").getByRole("listitem")).toHaveCount(3);
+  await expect(page.getByRole("heading", { name: "Your agent asks. The vault decides." })).toBeInViewport();
 
   // the three outcomes, in this vault's numbers as read from its policy
+  await expect(page.getByRole("heading", { name: "This vault's rules" })).toBeVisible();
   await expect(page.getByTestId("rule-paid")).toHaveText(`Up to ${tusd(policy.auto_limit)}`);
   await expect(page.getByTestId("rule-waits")).toHaveText(`Over ${tusd(policy.auto_limit)}, up to ${tusd(policy.hard_tx_limit)}`);
   await expect(page.getByTestId("rule-blocked")).toHaveText(
-    `Over ${tusd(policy.hard_tx_limit)}, past the ${tusd(policy.daily_limit)} daily budget, or to a payee not on the list`,
+    `Over ${tusd(policy.hard_tx_limit)}, more than ${tusd(policy.daily_limit)} in one day, or to anyone not on the list`,
   );
-
-  // the hero animation uses amounts picked from the same limits, and says so
-  const gate = page.getByTestId("gate-flow");
-  await expect(gate).toContainText(`≤ ${tusd(policy.auto_limit)} paid`);
-  await expect(gate).toContainText(`> ${tusd(policy.hard_tx_limit)} blocked`);
-  await expect(page.getByTestId("gate-source")).toHaveText(`Amounts picked from the limits of ${f.vault_id}, read from its policy.`);
 
   // live numbers match the chain
   await expect(page.getByTestId("live-balance")).toHaveText(tusd(vaultBalance));
   await expect(page.getByTestId("live-spent")).toContainText(`of ${tusd(budget.daily_limit)}`);
-  await expect(page.getByTestId("hero-proof")).toContainText("1 of 3 attacks from the spec pass on a local NEAR chain, in CI.");
+  // passed on chain plus passed in unit tests only; the case that is not covered is not counted
+  await expect(page.getByTestId("hero-proof")).toContainText("2 attacks tested automatically on every code change.");
 
   await page.getByRole("link", { name: "Open the dashboard" }).first().click();
   await expect(page).toHaveURL(/\?page=overview$/);
@@ -49,60 +58,65 @@ test("on a phone the landing page fits the screen", async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
-/** Opacity of each hero caption once every animation in the graphic is moved to `ms` into its cycle. */
-async function captionsAt(page: Page, ms: number): Promise<number[]> {
-  return page.getByTestId("gate-flow").evaluate((el, t) => {
+/** Opacity of each outcome in the hero once every animation in it is moved to `ms` into its cycle. */
+async function outcomesAt(page: Page, ms: number): Promise<Record<string, number>> {
+  return page.getByTestId("request-feed").evaluate((el, t) => {
     for (const a of el.getAnimations({ subtree: true })) {
       a.pause();
       a.currentTime = t;
     }
-    return [...el.querySelectorAll(".gate-caption")].map((c) => Number(getComputedStyle(c).opacity));
+    const opacity = (sel: string) => {
+      const target = el.querySelector(sel);
+      if (!target) throw new Error(`missing ${sel}`);
+      return Number(getComputedStyle(target).opacity);
+    };
+    return { paid: opacity(".feed-done-a"), approve: opacity(".feed-approve"), approved: opacity(".feed-done-b"), refused: opacity(".feed-done-c"), third: opacity(".feed-row-c") };
   }, ms);
 }
 
-test("the hero and the rule cards play their requests in turn, and stop while off screen", async ({ page }) => {
+test("the hero plays its three requests in turn, and stops while off screen", async ({ page }) => {
   await page.goto("/");
-  const gate = page.getByTestId("gate-flow");
-  await expect(gate).toHaveAttribute("data-playing", "true");
-  const running = () => gate.evaluate((el) => el.getAnimations({ subtree: true }).filter((a) => a.playState === "running").length);
-  expect(await running()).toBeGreaterThan(20);
+  const feed = page.getByTestId("request-feed");
+  await expect(feed).toHaveAttribute("data-playing", "true");
+  const running = () => feed.evaluate((el) => el.getAnimations({ subtree: true }).filter((a) => a.playState === "running").length);
+  expect(await running()).toBeGreaterThan(10);
 
-  // one caption at a time, in step with the request on screen: paid, then waiting, then blocked
-  expect(await captionsAt(page, 1_000)).toEqual([1, 0, 0]);
-  expect(await captionsAt(page, 5_000)).toEqual([0, 1, 0]);
-  expect(await captionsAt(page, 8_500)).toEqual([0, 0, 1]);
+  // the small payment is checked, then paid; the larger one waits for Approve, then is paid; the last is refused
+  expect(await outcomesAt(page, 1_000)).toEqual({ paid: 0, approve: 0, approved: 0, refused: 0, third: 0 });
+  expect(await outcomesAt(page, 2_000)).toEqual({ paid: 1, approve: 0, approved: 0, refused: 0, third: 0 });
+  expect(await outcomesAt(page, 4_500)).toEqual({ paid: 1, approve: 1, approved: 0, refused: 0, third: 0 });
+  expect(await outcomesAt(page, 6_500)).toEqual({ paid: 1, approve: 0, approved: 1, refused: 0, third: 0 });
+  expect(await outcomesAt(page, 9_500)).toEqual({ paid: 1, approve: 0, approved: 1, refused: 1, third: 1 });
 
   // below the fold, sections wait for the reader, then fade in
-  const firstRule = page.getByTestId("outcomes").locator(".reveal").first();
-  await expect(firstRule).toHaveAttribute("data-shown", "false");
-  const paidCard = page.getByTestId("motion-paid");
-  await expect(paidCard).toHaveAttribute("data-playing", "false");
-  await page.getByTestId("outcomes").scrollIntoViewIfNeeded();
-  await expect(firstRule).toHaveAttribute("data-shown", "true");
-
-  // each rule card acts out its own outcome, on a clock of its own length, so they never move in step
-  await expect(paidCard).toHaveAttribute("data-playing", "true");
-  const lengths = await page.evaluate(() =>
-    ["paid", "waits", "blocked"].map((s) => document.querySelector(`[data-testid=motion-${s}] .mini-chip`)?.getAnimations()[0]?.effect?.getTiming().duration),
-  );
-  expect(lengths).toEqual([3200, 5200, 3800]);
+  const firstStep = page.getByTestId("steps").locator(".reveal").first();
+  await expect(firstStep).toHaveAttribute("data-shown", "false");
+  await page.getByTestId("steps").scrollIntoViewIfNeeded();
+  await expect(firstStep).toHaveAttribute("data-shown", "true");
 
   await page.getByRole("contentinfo").scrollIntoViewIfNeeded();
-  await expect(gate).toHaveAttribute("data-playing", "false");
-  await expect(paidCard).toHaveAttribute("data-playing", "false");
+  await expect(feed).toHaveAttribute("data-playing", "false");
   await page.evaluate(() => window.scrollTo(0, 0));
-  await expect(gate).toHaveAttribute("data-playing", "true");
+  await expect(feed).toHaveAttribute("data-playing", "true");
 });
 
-test("with reduced motion every animation is one still frame and everything is shown at once", async ({ page }) => {
+test("with reduced motion the hero is one still frame of all three outcomes and everything is shown at once", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
-  const gate = page.getByTestId("gate-flow");
-  await expect(gate).toBeVisible();
-  expect(await gate.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
-  for (const card of await page.locator(".mini").all()) expect(await card.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
-  // the still frame is the request waiting for the wallet
-  expect(await gate.evaluate((el) => [...el.querySelectorAll(".gate-caption")].map((c) => getComputedStyle(c).opacity))).toEqual(["0", "1", "0"]);
+  const feed = page.getByTestId("request-feed");
+  await expect(feed).toBeVisible();
+  expect(await feed.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
+  // paid, waiting for Approve, refused; no "Checking rules" left on screen
+  expect(
+    await feed.evaluate((el) =>
+      [".feed-done-a", ".feed-approve", ".feed-done-b", ".feed-done-c", ".feed-check-a", ".feed-check-b", ".feed-check-c"].map(
+        (sel) => {
+          const target = el.querySelector(sel);
+          return target ? getComputedStyle(target).opacity : `missing ${sel}`;
+        },
+      ),
+    ),
+  ).toEqual(["1", "1", "0", "1", "0", "0", "0"]);
   await expect(page.locator(".reveal").first()).toHaveAttribute("data-shown", "true");
   await expect(page.locator('.reveal[data-shown="false"]')).toHaveCount(0);
 });

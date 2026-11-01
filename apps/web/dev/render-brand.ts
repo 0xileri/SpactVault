@@ -45,11 +45,11 @@ const card = (width = 1200, height = 630) => `<!doctype html><html><head><style>
   <div class="left">
     <div class="brand">${tileSvg(64)}<span class="word">Spact<b>Vault</b></span></div>
     <h1>Autonomous spending.<br>Human rules.</h1>
-    <p>A spending firewall for AI agents on NEAR.</p>
+    <p>Give your AI agent a budget, not your wallet.</p>
   </div>
   <div class="big">${tileSvg(300)}</div>
-  <div class="pills">${pill(PAID, "Paid at once")}${pill(WAITS, "Waits for your wallet")}${pill(BLOCKED, "Blocked")}</div>
-  <div class="note">NEAR testnet · unaudited prototype</div>
+  <div class="pills">${pill(PAID, "Paid instantly")}${pill(WAITS, "Needs your OK")}${pill(BLOCKED, "Refused")}</div>
+  <div class="note">Live on NEAR mainnet · unaudited prototype</div>
 </body></html>`;
 
 const icon = (size: number, square: boolean) =>
