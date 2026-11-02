@@ -29,7 +29,11 @@ Last full local run (2026-10-24, on `eb1ed44` plus this change before it was com
 - **Passed in unit tests only (3):** T07 expired approval, T10 UTC midnight, T15 wrong vault, network or policy version.
 - **Not covered (2):** T13 and T14, both P1. There is no cross-chain route yet.
 
-Run on 2026-11-02 after the P1 cross-chain route (ADR-032): see docs/STATUS.md "Tests" for the counts. T13 and T14 are now backed by unit, sandbox, adapter and browser tests.
+Run on 2026-11-02 after the P1 cross-chain route (ADR-032), 263 tests in 11 suites, all passed:
+
+- **Passed on a local chain (17):** T01-T09, T11-T18. T13 and T14 are backed by unit, sandbox, adapter, notifier and browser tests; T07 and T15 gained sandbox tests on 2026-10-30.
+- **Passed in unit tests only (1):** T10 UTC midnight (the Security Lab says why it is not run on chain).
+- **Not covered:** none. T13 and T14 run against a sandbox stand-in for the 1Click deposit address and mocked 1Click answers, not the live 1Click service.
 
 ## Known limitations and trust assumptions
 

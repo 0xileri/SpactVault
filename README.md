@@ -26,7 +26,7 @@ A wallet key can spend everything. A NEAR function-call key restricts which meth
 | Shared TS package: request hash, exact amounts, contract JSON schemas, reason codes, RPC client (`packages/shared`) | built, 23 tests; hash matches Rust and independent Python vectors, direct and cross-chain |
 | Landing page, owner dashboard and approval page (`apps/web`) | built, 48 unit tests and 25 browser tests on a local chain, including tampered RPC answers, framing, the network switch and the cross-chain review page |
 | Hosted site | live at https://spactvault.xyz (Railway) and https://0xileri.github.io/SpactVault/ (GitHub Pages), both from main, reading the mainnet vault with a switch to the testnet vault |
-| Security Lab report and page (`packages/security-lab`, `?page=security`) | built: 13 of 18 attack cases pass on a local chain, 3 in unit tests only, 2 wait for P1 |
+| Security Lab report and page (`packages/security-lab`, `?page=security`) | built: 17 of 18 attack cases pass on a local chain, T10 in unit tests only, none uncovered (263 tests in 11 suites, 2026-11-02) |
 | Agent MCP server for Claude Code / Codex (`apps/mcp`) | built, 24 unit tests and 11 tests over stdio on a local chain; run on testnet from Claude Code (paid, held for approval, blocked) |
 | Local demo with no wallet or testnet needed (`scripts/dev-sandbox.sh`) | works |
 | Testnet deploy script (`scripts/deploy-testnet.sh`) | ran on testnet on 2026-10-25: `vault.spact-ileri2.testnet` |
