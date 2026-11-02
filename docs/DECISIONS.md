@@ -10,7 +10,7 @@ The owner told the coding agent to start building on 2026-10-23, before the offi
 
 ## ADR-001: P0 supports direct NEP-141 payments on NEAR only (2026-10-23)
 
-`Route` has a single variant, `NearDirect`. The 1Click route is a separate, owner-approved adapter (AGENTS.md section 8) and needs its own state and tests. It is not a generic withdrawal.
+`Route` has a single variant, `NearDirect`. The 1Click route is a separate, owner-approved adapter (AGENTS.md section 8) and needs its own state and tests. It is not a generic withdrawal. (ADR-032 adds that route, as a separate request type.)
 
 ## ADR-002: Owner methods require exactly 1 yoctoNEAR (2026-10-23)
 
@@ -286,6 +286,22 @@ The owner wants to move between testnet and mainnet on the site. Until now a bui
 
 Not done: a third network, or a switch on the MCP server (each agent stays configured for one vault).
 
+## ADR-032: The P1 cross-chain route: owner-approved, bound to the quote, never re-credited (2026-11-02)
+
+AGENTS.md P1 asks for a 1Click route from NEAR: a dry quote whose terms are captured and hashed, a human-approved payment, and quote mutation tests, with T13 and T14 covered. This change builds it up to the live call and stops there. No 1Click request, testnet or mainnet deploy, or real transfer was made. The docs and API hosts are unreachable from the build environment, so the API shapes come from the official TypeScript SDK's generated types (INTEGRATIONS.md).
+
+- **A separate request type, not a withdrawal.** `request_cross_chain_payment` stores a `ONE_CLICK_ORIGIN_NEAR` request. Its `recipient` is the quote's deposit account on NEAR, and `cross_chain` holds the quote's destination tuple: chain, asset, final recipient, `refund_to`, minimum output, quote hash and quote deadline. Direct payments are unchanged.
+- **Always the owner's decision (I8).** A cross-chain request is stored as AWAITING_APPROVAL whatever its amount; the auto limit applies only to direct NEAR payments. The vault cannot check what 1Click does with a deposit, so the owner approves the exact deposit account and destination together. The 1Click quote `signature` is kept in the hashed quote, but the SDK documents no way to verify it, so it is not treated as authority.
+- **Bound into the approved hash.** The request digest appends the quote terms for route tag 1. Direct requests hash exactly as before, so the deployed vaults and their approval pages are unaffected. An independent Python vector checks Rust and TypeScript (INTEGRATIONS.md).
+- **Allowlist.** The policy gets `cross_chain`: up to 4 routes of (token, destination chain, destination asset, up to 8 final recipients). Strings are compared byte for byte, in a restricted character set, so look-alikes and whitespace fail closed. An empty list (the default, and what older policies parse to) turns the route off. The token's per-payment cap and UTC-day budget apply as for direct payments.
+- **Quote checks in the vault.** `refund_to` must be the vault. The deposit account must not be the vault, the owner, the token or an agent. The minimum output must be positive and the quote hash well formed (`INVALID_QUOTE`). A quote must have more than 60 s left when it is filed, approved and executed (`QUOTE_EXPIRED`), and the request expires 60 s before the quote does.
+- **Quote checks off chain (`packages/intents`).** The adapter builds an EXACT_INPUT, ORIGIN_CHAIN quote request that refunds to the vault. It refuses a quote unless it echoes exactly the question asked: payee, refund target, assets, amount, types and deadline. It also refuses a quote with a missing or non-NEAR deposit address, a deposit memo (the vault cannot send 1Click's memo), zero output, or less than 60 s left. Its quote hash is sha256 of the canonical JSON of the whole response. That proves which quote was approved, not that it is honest.
+- **Where the vault's part ends.** A delivered deposit moves the request to CROSS_CHAIN_PENDING (`EXTERNAL_SETTLEMENT_PENDING`) and its amount stays spent for its UTC day. No vault method takes a 1Click status. A SUCCESS or REFUNDED report is off-chain text, and the adapter's `reconcile` marks a reported refund `REFUND_UNVERIFIED` and never restores budget (I9). Tokens that do come back raise the vault's balance, which the owner can withdraw, but not today's budget. A definitive on-chain transfer failure (for example an unregistered deposit account) still releases the reservation once, as for direct payments.
+- **Agent key unchanged.** The agent's function-call key still allows only `request_direct_payment` and `execute_request` (ADR-017), and the MCP server still exposes only its two tools. Filing cross-chain requests needs the key and a tool to include the new method. That is a separate, owner-approved change.
+- **Deployed vaults.** The mainnet and testnet vaults run the earlier code: they have no cross-chain route, and the mainnet vault is locked (ADR-028), so it never will. The site and the shared schemas still read them: missing `cross_chain` fields parse as none.
+
+Not done: a live 1Click call, `POST /v0/deposit/submit`, polling in a service, a REFUND_OBSERVED state backed by on-chain evidence, and a deposit-address check against 1Click from the approval page (the adapter has `depositMismatches` for it).
+
 ## Open questions (from AGENTS.md section 17)
 
 - [x] Official `HACKATHON.md`: added at the repo root (owner copy, 2026-10-23).
@@ -296,7 +312,8 @@ Not done: a third network, or a switch on the MCP server (each agent stays confi
 - [x] Agent account full-access key on mainnet: kept offline on the owner's machine, as on testnet (ADR-017, ADR-028).
 - [ ] Reconciliation for a stuck TRANSFER_PENDING (callback out of gas).
 - [ ] Storage pruning for terminal requests.
-- [ ] 1Click quote authenticity and deposit semantics (P1).
+- [x] 1Click quote authenticity (P1): no documented way to verify the quote `signature`, so the route is owner-approved and the signature is only kept with the hashed quote (ADR-032).
+- [ ] 1Click deposit semantics for a NEAR-origin quote: that a plain `ft_transfer` to `depositAddress` is what 1Click detects, and whether the deposit account must be storage-registered first. Unverified; check before any live use (ADR-032, INTEGRATIONS.md).
 - [x] Telegram chat binding flow: one-time code on the operator's terminal (ADR-020). Open: a wallet-signed binding.
 - [x] Hosting: GitHub Pages from main, with the CI-built report (ADR-023), and Railway with real security headers (ADR-025). Open: a Content-Security-Policy.
 - [ ] A trusted RPC endpoint for testnet/mainnet. The site uses `https://test.rpc.fastnear.com` on testnet for now.

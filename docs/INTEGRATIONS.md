@@ -14,7 +14,7 @@ The first build session ran in a cloud container with a restricted network allow
 | `raw.githubusercontent.com` | yes | GitHub Action `action.yml` files checked |
 | `nearhackathon.com` | **no** | The owner pasted `HACKATHON.md` into the session; it is at the repo root with a provenance note. The live version was not fetched. |
 | `docs.near.org`, `docs.rs` | **no** | SDK behavior verified from crate source instead |
-| `docs.near-intents.org`, `1click.chaindefuser.com` | **no** | 1Click not integrated or re-verified (P1) |
+| `docs.near-intents.org`, `1click.chaindefuser.com` | **no** (rechecked 2026-11-02) | 1Click shapes taken from the official SDK package on npm instead (see "NEAR Intents / 1Click") |
 | `rpc.testnet.near.org` | **no** | No testnet deployment from this environment |
 | `core.telegram.org` | **no** | Telegram not integrated yet |
 | `github.com` (anonymous git) | yes | NEAR docs source cloned from `github.com/near/docs` at `04d956c` (2026-10-24), which is what docs.near.org renders |
@@ -172,11 +172,41 @@ expires_at_ns=1762000000000000000 policy_version=1
 -> 172 bytes, sha256 = 2d4708a7e377bb80a417f78393fea4ac8c40e2a4a2710b0fc713971a7804186a
 ```
 
+Cross-chain request (route tag 1) vector, also computed with Python `hashlib` (`digest_matches_independent_cross_chain_test_vector` in Rust, `matches the cross-chain test vector` in `packages/shared`):
+
+```text
+the direct fields with request_id=xc-001 route=1 amount=5000000 recipient=deposit.test.near
+reason="pay invoice 42 on solana", then
+destination_chain=sol destination_asset=nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near
+destination_recipient=7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV refund_to=vault.test.near
+min_amount_out=4900000 quote_hash=sha256("quote")=6327245c...02b26 quote_expires_at_ns=1762000600000000000
+-> 410 bytes, sha256 = 04940b54db8f43847767b0169b57a67f80ec6e8851fe470516c72a3c178bebb2
+```
+
+## NEAR Intents / 1Click (checked 2026-11-02)
+
+`docs.near-intents.org` and `1click.chaindefuser.com` do not resolve from the build environment, and WebFetch of the docs failed the same way. The shapes below come from the official TypeScript SDK, `@defuse-protocol/one-click-sdk-typescript` **0.1.26** (npm, published 2026-09-22, repository `github.com/defuse-protocol/one-click-sdk-typescript`). Its types are generated from the API's OpenAPI spec. The package was downloaded as data and its `dist/index.d.ts` read; it is not a dependency and none of its code runs. Web search confirmed the request fields and status names from the docs pages (Making a Request, Check swap execution status).
+
+| Item | Value | Status |
+|---|---|---|
+| Base URL | `https://1click.chaindefuser.com` (AGENTS.md section 8) | not reached from here |
+| Endpoints used | `GET /v0/tokens`, `POST /v0/quote`, `GET /v0/status?depositAddress=` (SDK paths) | paths from the SDK; `POST /v0/deposit/submit` exists but is not used |
+| Auth | optional API key, sent as `Authorization: Bearer` (docs search: Bearer or X-API-Key) | the adapter sends it only if given; never in a browser |
+| Quote request | `dry`, `swapType` (`EXACT_INPUT`), `slippageTolerance` (basis points), `originAsset`, `depositType` (`ORIGIN_CHAIN`), `destinationAsset`, `amount` (smallest unit), `refundTo`, `refundType` (`ORIGIN_CHAIN`), `recipient`, `recipientType` (`DESTINATION_CHAIN`), `deadline` (ISO), `depositMode` (`SIMPLE`) | SDK types; matches AGENTS.md section 8 |
+| Quote response | `timestamp`, `signature`, `quoteRequest` (echo), `quote.depositAddress`, `quote.depositMemo` (some chains), `quote.amountIn`, `quote.amountOut`, `quote.minAmountOut`, `quote.deadline`, `quote.timeWhenInactive`, `quote.timeEstimate`. Dry quotes omit `depositAddress`, `deadline` and `timeWhenInactive` | SDK types |
+| Quote signature | "Signature of the 1Click service confirming the quote for the specific deposit address. Must be saved on the client side" | **no documented verification method or key**, so not used as authority (ADR-032) |
+| Status values | `KNOWN_DEPOSIT_TX`, `PENDING_DEPOSIT`, `INCOMPLETE_DEPOSIT`, `PROCESSING`, `SUCCESS`, `REFUNDED`, `FAILED`; `swapDetails.refundedAmount`, `depositedAmount`, `nearTxHashes` | SDK types; all treated as 1Click's report |
+| NEAR asset ids | `nep141:<token contract>` (SDK README examples) | the vault's token must also appear in `GET /v0/tokens` with `blockchain: near` before use |
+| NEAR-origin deposit | a plain `ft_transfer` of the exact amount to `depositAddress` | **unverified**: the docs say the swap starts after the deposit, but whether the deposit account needs `storage_deposit`, and that a plain `ft_transfer` is detected, were not confirmed |
+| Testnet | none, per AGENTS.md section 8 (owner's check of 2026-10-23) | so every test here uses `MockOneClick` and a sandbox stand-in deposit account |
+
+The adapter is `packages/intents`. Its live client refuses to start unless `ENABLE_1CLICK_LIVE` is true. Its fixtures are synthetic, shaped by the SDK types and marked as such, not recorded from the live API.
+
 ## Not integrated yet
 
 | Integration | Status | Notes |
 |---|---|---|
-| NEAR Intents / 1Click | not started (P1) | AGENTS.md section 8 lists endpoints the owner researched on 2026-10-23. Not re-verified here because the hosts were blocked. AGENTS.md says there is no testnet version. |
+| NEAR Intents / 1Click | adapter and vault route built and tested locally (P1, ADR-032); **no live call** | see "NEAR Intents / 1Click" above |
 | Telegram Bot API | not started | |
 
 ## Hackathon submission (from `HACKATHON.md`, owner copy of 2026-10-23)

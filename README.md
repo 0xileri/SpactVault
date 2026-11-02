@@ -21,18 +21,18 @@ A wallet key can spend everything. A NEAR function-call key restricts which meth
 
 | Piece | State |
 |---|---|
-| Vault contract (`contracts/spact-vault`) | built, 51 unit tests |
-| Real-chain tests on a NEAR sandbox node (`contracts/integration-tests`) | 10 passing: auto payment, approval flow, parallel split, failed transfer, private callback, agent bypass attempts, init front-run, pause/recovery, the agent's restricted key |
-| Shared TS package: request hash, exact amounts, contract JSON schemas, reason codes, RPC client (`packages/shared`) | built, 19 tests; hash matches Rust and an independent Python vector |
-| Landing page, owner dashboard and approval page (`apps/web`) | built, 30 unit tests and 16 browser tests on a local chain, including tampered RPC answers and framing |
-| Hosted site | live at https://spactvault.xyz (Railway) and https://0xileri.github.io/SpactVault/ (GitHub Pages), both from main and reading the testnet vault |
+| Vault contract (`contracts/spact-vault`) | built, 66 unit tests (15 for the P1 cross-chain route) |
+| Real-chain tests on a NEAR sandbox node (`contracts/integration-tests`) | 19 passing: auto payment, approval flow, parallel split, failed transfer, private callback, agent bypass attempts, init front-run, pause/recovery, the agent's restricted key, expiry, wrong vault or policy, and the cross-chain route (deposit and payee bound apart, returned tokens never restore budget, expired quote, unlisted route) |
+| Shared TS package: request hash, exact amounts, contract JSON schemas, reason codes, RPC client (`packages/shared`) | built, 23 tests; hash matches Rust and independent Python vectors, direct and cross-chain |
+| Landing page, owner dashboard and approval page (`apps/web`) | built, 48 unit tests and 25 browser tests on a local chain, including tampered RPC answers, framing, the network switch and the cross-chain review page |
+| Hosted site | live at https://spactvault.xyz (Railway) and https://0xileri.github.io/SpactVault/ (GitHub Pages), both from main, reading the mainnet vault with a switch to the testnet vault |
 | Security Lab report and page (`packages/security-lab`, `?page=security`) | built: 13 of 18 attack cases pass on a local chain, 3 in unit tests only, 2 wait for P1 |
 | Agent MCP server for Claude Code / Codex (`apps/mcp`) | built, 24 unit tests and 11 tests over stdio on a local chain; run on testnet from Claude Code (paid, held for approval, blocked) |
 | Local demo with no wallet or testnet needed (`scripts/dev-sandbox.sh`) | works |
 | Testnet deploy script (`scripts/deploy-testnet.sh`) | ran on testnet on 2026-10-25: `vault.spact-ileri2.testnet` |
 | Signing with a real wallet | done on testnet with Meteor Wallet: the owner approved and paid the 25 TUSD demo request on the hosted site. Other wallets untested |
-| Telegram alert for the owner (`apps/notifier`) | built, 27 unit tests and 4 tests on a local chain against a mock Bot API; not yet tried with real Telegram |
-| NEAR Intents / 1Click cross-chain route | not yet (P1) |
+| Telegram alert for the owner (`apps/notifier`) | built, 28 unit tests and 4 tests on a local chain against a mock Bot API; not yet tried with real Telegram |
+| NEAR Intents / 1Click cross-chain route (P1) | vault route, 1Click adapter (`packages/intents`, 14 tests), review page and Telegram alert built and tested on a local chain with a stand-in deposit account and a mock 1Click; **no live 1Click call, not on testnet or mainnet** (the deployed vaults run the earlier code). See DECISIONS ADR-032 |
 
 Details: [docs/STATUS.md](docs/STATUS.md). Security mapping: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
@@ -103,9 +103,10 @@ scripts/dev-sandbox.sh
 1. Wait for `Open http://localhost:5173/?request=demo-approve-1` and open it. You see **25 TUSD to api.test.near**, status **Waiting for you**, the agent's note, why it waits (over the **10 TUSD instant limit**), a green **Safety check passed** box, and **47 TUSD of 50** left to spend today.
 2. Click **Connect Local sandbox signer**. The header shows `owner.test.near`.
 3. Click **Approve and pay**. You see **Done: approved and paid** with a transaction hash, the status turns **Paid**, and the page says **You approved it, and it was sent.**
-4. Open http://localhost:5173/?page=overview, the dashboard. Nothing is **Waiting for your OK**, the demo request shows as **Paid** under **What your agent did**, **Left to spend today** shows **22 TUSD of 50 TUSD**, and **Money in the vault** shows **972 TUSD**.
+4. Open http://localhost:5173/?page=overview, the dashboard. The demo request shows as **Paid** under **What your agent did**, **Left to spend today** shows **22 TUSD of 50 TUSD**, and **Money in the vault** shows **972 TUSD**. One request is still **Waiting for your OK**: the cross-chain one below.
+5. **Cross-chain route (P1, simulated).** Open http://localhost:5173/?request=demo-cross-chain-1. You see **5 TUSD to 7EcDh… on sol, through NEAR Intents 1Click**, with the **1Click deposit address on NEAR** (`deposit.test.near`) and the **final recipient** listed apart, **Refunds go to** `vault.test.near`, and why it waits: cross-chain payments always do, whatever the amount. Click **Approve and pay**. You see **Done: approved and sent to the 1Click deposit address**, the status turns **Sent to 1Click**, and the dashboard shows **17 TUSD of 50 TUSD** left. This is a simulation: `deposit.test.near` is a local account standing in for a 1Click deposit address, and nothing reaches Solana. The vault's part (exact amount, exact deposit account, owner approval, budget spent) is real chain behavior; 1Click's part is not exercised.
 
-To watch the attacks fail, run `pnpm e2e`. It drives Chromium against the same local setup, and you see `19 passed`. Three of those tests rewrite the RPC response on its way to the page:
+To watch the attacks fail, run `pnpm e2e`. It drives Chromium against the same local setup, and you see `25 passed`. Three of those tests rewrite the RPC response on its way to the page:
 
 - **Recipient changed, hash kept:** the page shows **Safety check failed: do not approve** and the approve button is disabled.
 - **Recipient and hash both forged:** the page shows the attacker's terms with a passing check, the owner approves, and the vault refuses with `HASH_MISMATCH`. The test then reads the chain directly: nothing moved and the request still awaits approval.
@@ -168,7 +169,7 @@ On testnet or mainnet the page uses a real wallet through near-connect. Configur
 - **NEAR JSON-RPC**: the approval page reads the vault directly, with no backend in between
 - **MCP** (`@modelcontextprotocol/server`): the agent's tools, backed by its function-call key
 
-NEAR Intents is planned for a human-approved cross-chain payout (P1) and is not integrated yet.
+- **NEAR Intents 1Click** (P1, built and tested locally, **no live call yet**): the vault pays a 1Click quote's NEAR deposit address only after the owner approves the exact deposit address and destination; `packages/intents` builds and checks quotes and reads 1Click's status without ever trusting it to restore budget (DECISIONS ADR-032).
 
 ## Repo map
 

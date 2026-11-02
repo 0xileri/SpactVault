@@ -71,7 +71,8 @@ describe("catalog", () => {
     for (const c of CASES) {
       for (const [suite] of c.tests) expect(suiteIds.has(suite)).toBe(true);
       expect(new Set(c.tests.map(([s, t]) => `${s}:${t}`)).size).toBe(c.tests.length);
-      if (c.tests.length === 0) expect(c.note).toMatch(/P1/);
+      // every case is backed by tests now that the P1 cross-chain route exists
+      expect(c.tests.length, c.id).toBeGreaterThan(0);
     }
   });
 });
