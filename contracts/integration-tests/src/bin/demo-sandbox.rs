@@ -10,18 +10,36 @@ use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 
 use anyhow::Context;
-use integration_tests::{setup, AGENT_METHODS, UNIT};
+use integration_tests::{setup, AGENT_METHODS, SOL_PAYEE, UNIT};
 use near_workspaces::types::NearToken;
 use serde_json::json;
 use tokio::signal::unix::{signal, SignalKind};
 
 const DEMO_REQUEST: &str = "demo-approve-1";
+const CROSS_CHAIN_REQUEST: &str = "demo-cross-chain-1";
+/// Six hours: the demo's cross-chain quote outlives any local session or browser test run.
+const QUOTE_LIFETIME_NS: u64 = 6 * 3600 * 1_000_000_000;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let path = std::env::args().nth(1).context("usage: demo-sandbox <fixture.json>")?;
 
     let env = setup().await?;
+    // The owner allowlists one 1Click route, and the agent files one cross-chain request through it
+    // (P1) before its key is restricted: the restricted key cannot call request_cross_chain_payment.
+    env.enable_cross_chain().await?;
+    let deposit = env.deposit_account("deposit").await?;
+    let quote_deadline = env.now_ns().await? + QUOTE_LIFETIME_NS;
+    env.request_cross_chain(
+        &env.agent,
+        CROSS_CHAIN_REQUEST,
+        5 * UNIT,
+        deposit.id(),
+        SOL_PAYEE,
+        quote_deadline,
+    )
+    .await?
+    .into_result()?;
     // The agent keeps only a function-call key for two vault methods (see AGENTS.md I1).
     let agent = env.restrict_agent_key(NearToken::from_near(1)).await?;
     // One payment the policy settled on its own, and one waiting for the owner.
@@ -46,6 +64,9 @@ async fn main() -> anyhow::Result<()> {
         "api_id": env.api.id(),
         "mallory_id": env.mallory.id(),
         "demo_request_id": DEMO_REQUEST,
+        "cross_chain_request_id": CROSS_CHAIN_REQUEST,
+        "deposit_id": deposit.id(),
+        "cross_chain_payee": SOL_PAYEE,
     });
     let mut file = std::fs::OpenOptions::new()
         .write(true)
