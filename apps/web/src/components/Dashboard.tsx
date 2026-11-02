@@ -7,6 +7,7 @@ import { explorerAccountLink, type AppConfig } from "../config.js";
 import { budgetResetNs, isLapsed, outcomeLine, usedPercent, waitingForOwner, type TokenSummary } from "../dashboard.js";
 import { errorMessage, formatAmount, formatRelative, formatUtc } from "../format.js";
 import { listRequests, loadDashboard, type DashboardSnapshot } from "../near/vault.js";
+import { useLink } from "../network.js";
 import { Badge, Button, Card, Mono, Notice, StatusBadge } from "./ui.js";
 
 const PAGE = 50;
@@ -108,9 +109,10 @@ function Note({ request }: { request: PaymentRequest }) {
 }
 
 function OpenLink({ request }: { request: PaymentRequest }) {
+  const link = useLink();
   return (
     <a
-      href={requestLink(request.request_id)}
+      href={link(requestLink(request.request_id))}
       aria-label={`Open ${request.request_id}`}
       className="text-sm font-medium whitespace-nowrap text-ink underline decoration-zinc-300 underline-offset-4 hover:decoration-brand"
     >
@@ -183,6 +185,7 @@ function ActivityTable({ requests, metadataFor, nowNs }: ActivityProps) {
 
 /** The vault's owner view: money, what waits for them, what the agent did, and the rules. Read only. */
 export function Dashboard({ config }: { config: AppConfig }) {
+  const link = useLink();
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
   const [older, setOlder] = useState<PaymentRequest[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -290,7 +293,7 @@ export function Dashboard({ config }: { config: AppConfig }) {
             {waiting.map((r) => (
               <li key={r.request_id}>
                 <a
-                  href={requestLink(r.request_id)}
+                  href={link(requestLink(r.request_id))}
                   className="group flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-surface p-5 transition duration-300 ease-fluid hover:border-brand/40 focus-visible:outline-2 focus-visible:outline-brand"
                 >
                   <span className="min-w-0">

@@ -82,11 +82,15 @@ export function parseConfig(env: Record<string, string | undefined>): McpConfig 
   return { network, rpcUrl: rpc.toString(), vaultId, agentId, agentKeyFile, approvalUrl, explorerTxUrl };
 }
 
-/** The owner's approval page for one request, in the form the web app routes (`?request=<id>`). */
-export function reviewLink(config: Pick<McpConfig, "approvalUrl">, requestId: string): string | null {
+/**
+ * The owner's approval page for one request, in the form the web app routes (`?request=<id>&vault=<vault>`).
+ * The vault picks the right network on a site that shows more than one, and a site for another vault refuses it.
+ */
+export function reviewLink(config: Pick<McpConfig, "approvalUrl" | "vaultId">, requestId: string): string | null {
   if (!config.approvalUrl) return null;
   const url = new URL(config.approvalUrl);
   url.searchParams.set("request", requestId);
+  url.searchParams.set("vault", config.vaultId);
   return url.toString();
 }
 

@@ -118,6 +118,16 @@ Mainnet preparation (2026-10-30), DECISIONS ADR-028. The owner deployed it on 20
 - **USDC contract id:** confirmed by the deploy, which checks the token's metadata on chain before spending, and by the vault's 5 USDC balance (INTEGRATIONS "Mainnet").
 - **Site:** on mainnet the footer says real funds are involved. Switching a site is three variables.
 
+Network switch (2026-11-01), DECISIONS ADR-031:
+- **What:** one site can show a second network's vault. The top bar gets a Mainnet/Testnet switch; links stay on the chosen network. Approval links from the MCP server and the Telegram alert now name their vault, so they open on the right network.
+- **Settings:** `VITE_TESTNET_VAULT_ID` (or `VITE_MAINNET_VAULT_ID`) with its RPC, passed through the Dockerfile and the Pages job. The hosted sites need it set to show the switch.
+- **Checked:**
+  - lint and typecheck;
+  - 45 web unit tests, 8 of them new for config and network choice;
+  - MCP 24 and notifier 27 unit tests;
+  - MCP 11 and notifier 4 sandbox tests, with the new link format;
+  - 21 of 21 e2e tests: the switch moves the whole site and its links, an approval link opens on its vault's network, a self-contradicting link is refused, and the phone layout still fits.
+
 Plain-language dashboard and approval page (2026-11-01), DECISIONS ADR-030:
 - **Why:** the owner asked for the same treatment as the landing page.
 - **Dashboard:**

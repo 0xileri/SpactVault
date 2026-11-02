@@ -12,6 +12,11 @@ ARG VITE_NEAR_NETWORK=testnet
 ARG VITE_NEAR_RPC_URL=https://test.rpc.fastnear.com
 # empty: a site with only the landing page and the Security Lab (ADR-023)
 ARG VITE_VAULT_ID=
+# Optional second network, offered by the site's network switch (ADR-031). Empty vault: no switch.
+ARG VITE_TESTNET_VAULT_ID=
+ARG VITE_TESTNET_RPC_URL=https://test.rpc.fastnear.com
+ARG VITE_MAINNET_VAULT_ID=
+ARG VITE_MAINNET_RPC_URL=https://rpc.mainnet.fastnear.com
 # The CI-built report published with the GitHub Pages site, read by the browser at runtime.
 ARG VITE_SECURITY_REPORT_URL=https://0xileri.github.io/SpactVault/security-report.json
 ARG VITE_REPO_URL=https://github.com/0xileri/SpactVault

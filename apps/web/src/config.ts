@@ -117,6 +117,40 @@ export function parseSiteConfig(env: Record<string, string | undefined>): SiteCo
   return env.VITE_VAULT_ID ? parseConfig(env) : { ...parseCommon(env), vaultId: null };
 }
 
+const EXTRA_NETWORKS = ["mainnet", "testnet"] as const;
+
+/**
+ * Every network this build can show. The first entry is the main one (VITE_NEAR_NETWORK, VITE_VAULT_ID,
+ * VITE_NEAR_RPC_URL). A second public network is added when its own vault is set: VITE_TESTNET_VAULT_ID
+ * with VITE_TESTNET_RPC_URL, or VITE_MAINNET_VAULT_ID with VITE_MAINNET_RPC_URL. It shares the main
+ * entry's report and repository links and uses its network's default explorer.
+ */
+export function parseSiteConfigs(env: Record<string, string | undefined>): SiteConfig[] {
+  const main = parseSiteConfig(env);
+  const configs: SiteConfig[] = [main];
+  for (const network of EXTRA_NETWORKS) {
+    const prefix = `VITE_${network.toUpperCase()}`;
+    const vaultValue = env[`${prefix}_VAULT_ID`];
+    if (!vaultValue) continue;
+    if (network === main.network) throw new ConfigError(`${prefix}_VAULT_ID is for the main network; use VITE_VAULT_ID`);
+    if (main.vaultId === null) throw new ConfigError(`${prefix}_VAULT_ID needs a main vault in VITE_VAULT_ID`);
+    const vault = accountId.safeParse(vaultValue);
+    if (!vault.success) throw new ConfigError(`${prefix}_VAULT_ID must be a NEAR account id`);
+    const rpc = parseUrl(env[`${prefix}_RPC_URL`], `${prefix}_RPC_URL`);
+    if (rpc.protocol !== "https:") throw new ConfigError(`${prefix}_RPC_URL must use https`);
+    configs.push({
+      ...main,
+      network,
+      vaultId: vault.data,
+      rpcUrl: rpc.toString(),
+      explorerTxUrl: DEFAULT_EXPLORERS[network],
+      explorerAccountUrl: DEFAULT_ACCOUNT_EXPLORERS[network],
+      devSignerUrl: null,
+    });
+  }
+  return configs;
+}
+
 export function explorerAccountLink(config: Pick<AppConfig, "explorerAccountUrl">, account: string): string | null {
   if (!config.explorerAccountUrl || !accountId.safeParse(account).success) return null;
   return config.explorerAccountUrl.replace("{account}", encodeURIComponent(account));

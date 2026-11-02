@@ -50,7 +50,7 @@ To skip linking, set `TELEGRAM_CHAT_ID` yourself.
 | `SPACT_NETWORK` | yes | `sandbox`, `testnet` or `mainnet`; must match the vault |
 | `SPACT_RPC_URL` | yes | NEAR JSON-RPC endpoint (https outside sandbox) |
 | `SPACT_VAULT_ID` | yes | the vault to watch |
-| `SPACT_APPROVAL_URL` | yes | base URL of the approval page (https outside sandbox) |
+| `SPACT_APPROVAL_URL` | yes | base URL of the approval page (https outside sandbox); links add `?request=<id>&vault=<vault>` |
 | `TELEGRAM_BOT_TOKEN` | yes | from @BotFather. Never logged or written to the state file. |
 | `TELEGRAM_CHAT_ID` | no | the owner's chat id; otherwise link with `/start <code>` |
 | `SPACT_NOTIFIER_STATE` | no | state file (default `~/.spact/notifier-<network>-<vault>.json`, mode 600) |

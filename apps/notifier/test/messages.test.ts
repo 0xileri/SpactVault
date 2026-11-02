@@ -18,8 +18,8 @@ describe("approvalMessage", () => {
     expect(text).toContain("Expires: 2025-11-01 13:26 UTC (in 1 h 0 min)");
     expect(text).toContain("Budget left today: 47 TUSD of 50 TUSD");
     expect(text).toContain("This message cannot approve anything.");
-    expect(text.trim().endsWith("https://approve.example/?request=pay-1")).toBe(true);
-    expect(buttonUrl).toBe("https://approve.example/?request=pay-1");
+    expect(text.trim().endsWith("https://approve.example/?request=pay-1&vault=vault.demo.testnet")).toBe(true);
+    expect(buttonUrl).toBe("https://approve.example/?request=pay-1&vault=vault.demo.testnet");
   });
 
   it("warns when today's budget cannot cover the payment", () => {
@@ -33,7 +33,7 @@ describe("approvalMessage", () => {
     const local = { ...config, approvalUrl: "http://localhost:5173/" };
     const { text, buttonUrl } = approvalMessage(local, { request: request(), token, budget, nowNs: NOW });
     expect(buttonUrl).toBeUndefined();
-    expect(text).toContain("http://localhost:5173/?request=pay-1");
+    expect(text).toContain("http://localhost:5173/?request=pay-1&vault=");
   });
 
   it("shows base units when the token metadata is unavailable", () => {

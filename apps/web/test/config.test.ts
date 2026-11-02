@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ConfigError, explorerAccountLink, explorerTxLink, parseConfig, parseSiteConfig } from "../src/config.js";
+import { ConfigError, explorerAccountLink, explorerTxLink, parseConfig, parseSiteConfig, parseSiteConfigs } from "../src/config.js";
 
 const BASE = {
   VITE_NEAR_NETWORK: "testnet",
@@ -69,5 +69,35 @@ describe("parseSiteConfig", () => {
     expect(() => parseSiteConfig({ ...BASE, VITE_VAULT_ID: "", VITE_NEAR_RPC_URL: "http://rpc.example.org" })).toThrow(/https/);
     expect(() => parseSiteConfig({ ...BASE, VITE_VAULT_ID: "", VITE_SECURITY_REPORT_URL: "http://evil.example/r.json" })).toThrow(/https/);
     expect(() => parseSiteConfig({ ...BASE, VITE_VAULT_ID: "", VITE_DEV_SIGNER_URL: "http://127.0.0.1:8788" })).toThrow(/only allowed/);
+  });
+});
+
+describe("parseSiteConfigs", () => {
+  const MAINNET = { ...BASE, VITE_NEAR_NETWORK: "mainnet", VITE_VAULT_ID: "vault.owner.near", VITE_REPO_URL: "https://example.test/repo" };
+
+  it("is just the main network when no second vault is set", () => {
+    expect(parseSiteConfigs(MAINNET).map((c) => c.network)).toEqual(["mainnet"]);
+  });
+
+  it("adds testnet next to mainnet, with its own vault, RPC and explorer", () => {
+    const [main, test] = parseSiteConfigs({ ...MAINNET, VITE_TESTNET_VAULT_ID: "vault.owner.testnet", VITE_TESTNET_RPC_URL: "https://test.rpc.example" });
+    expect(main).toMatchObject({ network: "mainnet", vaultId: "vault.owner.near" });
+    expect(test).toMatchObject({
+      network: "testnet",
+      vaultId: "vault.owner.testnet",
+      rpcUrl: "https://test.rpc.example/",
+      explorerTxUrl: "https://testnet.nearblocks.io/txns/{hash}",
+      repoUrl: "https://example.test/repo",
+      devSignerUrl: null,
+    });
+  });
+
+  it("refuses a second vault that is unclear, unsafe or has nothing to sit next to", () => {
+    const testnet = { VITE_TESTNET_VAULT_ID: "vault.owner.testnet", VITE_TESTNET_RPC_URL: "https://test.rpc.example" };
+    expect(() => parseSiteConfigs({ ...MAINNET, VITE_TESTNET_VAULT_ID: "vault.owner.testnet" })).toThrow(/VITE_TESTNET_RPC_URL is required/);
+    expect(() => parseSiteConfigs({ ...MAINNET, ...testnet, VITE_TESTNET_RPC_URL: "http://test.rpc.example" })).toThrow(/https/);
+    expect(() => parseSiteConfigs({ ...MAINNET, ...testnet, VITE_TESTNET_VAULT_ID: "Not An Account" })).toThrow(/account id/);
+    expect(() => parseSiteConfigs({ ...MAINNET, VITE_MAINNET_VAULT_ID: "other.near", VITE_MAINNET_RPC_URL: "https://rpc.example" })).toThrow(/main network/);
+    expect(() => parseSiteConfigs({ ...MAINNET, ...testnet, VITE_VAULT_ID: "" })).toThrow(/needs a main vault/);
   });
 });

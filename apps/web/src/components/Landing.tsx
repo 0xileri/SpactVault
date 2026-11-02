@@ -6,6 +6,7 @@ import { usedPercent } from "../dashboard.js";
 import { errorMessage, formatAmount } from "../format.js";
 import { exampleAmounts, GENERIC_AMOUNTS, GENERIC_RULES, liveCounts, outcomeRules, type OutcomeRules } from "../landing.js";
 import { loadDashboard, type DashboardSnapshot } from "../near/vault.js";
+import { useLink } from "../network.js";
 import { loadSecurityReport, type LoadResult } from "../securityLab.js";
 import { SignalDot, type Signal } from "./Brand.js";
 import { Reveal } from "./Motion.js";
@@ -175,6 +176,7 @@ function StatSkeleton() {
 
 function LiveSection({ config, live }: { config: AppConfig; live: Live }) {
   const vaultLink = explorerAccountLink(config, config.vaultId);
+  const link = useLink();
 
   let body: ReactNode;
   if (live.kind === "error") {
@@ -254,7 +256,7 @@ function LiveSection({ config, live }: { config: AppConfig; live: Live }) {
               </>
             ) : null}
           </p>
-          <TextLink href="?page=overview">Open the dashboard</TextLink>
+          <TextLink href={link("?page=overview")}>Open the dashboard</TextLink>
         </div>
       </Container>
     </section>
@@ -277,6 +279,7 @@ function NoVaultSection() {
 }
 
 function HeroProof({ lab }: { lab: LoadResult | null }) {
+  const link = useLink();
   const view = lab?.kind === "ok" ? lab.view : null;
   if (!view) return null;
   const passed = view.counts.PASSED_ON_CHAIN + view.counts.PASSED_UNIT_ONLY;
@@ -286,7 +289,7 @@ function HeroProof({ lab }: { lab: LoadResult | null }) {
       <span>
         <span className="font-semibold text-ink">{passed} attacks</span> tested {view.report.source.kind === "ci" ? "automatically on every code change" : "in the last local run"}.
       </span>
-      <a href="?page=security" className="font-medium text-ink underline decoration-zinc-300 underline-offset-4 hover:decoration-brand">
+      <a href={link("?page=security")} className="font-medium text-ink underline decoration-zinc-300 underline-offset-4 hover:decoration-brand">
         See the results
       </a>
     </p>
@@ -295,6 +298,7 @@ function HeroProof({ lab }: { lab: LoadResult | null }) {
 
 /** The public front page: what SpactVault is, how it decides, and what the configured vault is doing. */
 export function Landing({ config }: { config: SiteConfig }) {
+  const link = useLink();
   const vaultConfig = config.vaultId === null ? null : config;
   const [live, setLive] = useState<Live>(vaultConfig ? { kind: "loading" } : { kind: "none" });
   const [lab, setLab] = useState<LoadResult | null>(null);
@@ -343,7 +347,11 @@ export function Landing({ config }: { config: SiteConfig }) {
               <PrimaryLink href="#how" down>
                 See how it works
               </PrimaryLink>
-              {vaultConfig ? <TextLink href="?page=overview">Open the dashboard</TextLink> : <TextLink href="?page=security">See the Security Lab</TextLink>}
+              {vaultConfig ? (
+                <TextLink href={link("?page=overview")}>Open the dashboard</TextLink>
+              ) : (
+                <TextLink href={link("?page=security")}>See the Security Lab</TextLink>
+              )}
             </div>
             <HeroProof lab={lab} />
           </div>

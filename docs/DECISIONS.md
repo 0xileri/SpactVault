@@ -266,6 +266,26 @@ After ADR-029 the owner asked for the same treatment on the dashboard and the ap
 
 The checks are unchanged: the hash comparison, owner and network checks, and every refusal path work as before, and the e2e attacks still pass.
 
+## ADR-031: One site, two networks, with a switch (2026-11-01)
+
+The owner wants to move between testnet and mainnet on the site. Until now a build served exactly one vault on one network.
+
+- **Config.** The main network stays `VITE_NEAR_NETWORK`, `VITE_VAULT_ID` and `VITE_NEAR_RPC_URL`. A second public network is added only when its own vault is set: `VITE_TESTNET_VAULT_ID` with `VITE_TESTNET_RPC_URL`, or `VITE_MAINNET_VAULT_ID` with `VITE_MAINNET_RPC_URL`.
+  - The second network gets its network's default explorer and never a dev signer.
+  - The build refuses the second vault in four cases: without an https RPC, when it names the main network, when it is not an account id, or when there is no main vault.
+  - The Dockerfile and the Pages job pass these through; empty means no switch, as before.
+- **Choosing the network on each page load** (`chooseConfig` in `apps/web/src/network.ts`):
+  - `network=` in the URL picks one by name;
+  - without it, a `vault=` that names one of the configured vaults picks that vault's network;
+  - anything else gets the main network.
+  - An explicit `network=` wins over `vault=`, so a link that names one network and the other network's vault is refused by the existing foreign-vault check rather than followed.
+- **The switch.** A small select in the top bar, shown only when there are two networks. Switching is a full page load to the same page (`page=` kept), dropping any `request=` or `vault=`, because those belong to the old network. While on the second network, every internal link carries `network=` (a `LinkContext` rewrites them), so the dashboard, approval and home links stay on it. The main network needs no parameter, so old links behave as before. The badge and footer already name the network, and mainnet's still says real funds.
+- **Approval links.** The MCP server's `review_url` and the Telegram alert's link now add `vault=<vault>`. On a site with both networks, an agent on testnet sends the owner to the testnet vault, without the owner switching first. Old links without `vault=` open on the main network, where an unknown request says it was not found.
+- **Phones.** To fit a 390 px screen with the switch, the top bar uses smaller gaps, "Security" instead of "Security Lab", and hides the GitHub icon (the footer links the source).
+- **Safety.** Each page load still serves exactly one vault, and the approval hash still uses the selected network and vault, so nothing signed on one network can apply to the other. Wallet connections are per page load and per network.
+
+Not done: a third network, or a switch on the MCP server (each agent stays configured for one vault).
+
 ## Open questions (from AGENTS.md section 17)
 
 - [x] Official `HACKATHON.md`: added at the repo root (owner copy, 2026-10-23).

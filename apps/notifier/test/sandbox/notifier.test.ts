@@ -104,7 +104,7 @@ describe("Telegram notifier on a sandbox chain", () => {
     expect(alert.text).toContain(`To: ${sb.apiId}`);
     expect(alert.text).toContain(`Vault: ${sb.vaultId}`);
     expect(alert.text).toContain("Budget left today: 47 TUSD of 50 TUSD");
-    expect(alert.text).toContain("http://localhost:5173/?request=demo-approve-1");
+    expect(alert.text).toContain(`http://localhost:5173/?request=demo-approve-1&vault=${sb.vaultId}`);
     expect(alert.parse_mode).toBeUndefined();
     expect(alert.reply_markup).toBeUndefined(); // local link: text only
     expect(alert.link_preview_options).toEqual({ is_disabled: true });

@@ -87,7 +87,7 @@ describe("Spact MCP server on a sandbox chain", () => {
     expect(result.structuredContent).toMatchObject({
       policy_decision: "OWNER_APPROVAL_REQUIRED",
       onchain_status: "AWAITING_APPROVAL",
-      review_url: "http://127.0.0.1:5173/?request=mcp-approve-1",
+      review_url: `http://127.0.0.1:5173/?request=mcp-approve-1&vault=${sb.vaultId}`,
     });
     expect(await tokenBalance(sb.vaultId)).toBe(vaultBefore);
     const status = await client.callTool({ name: "get_payment_status", arguments: { request_id: "mcp-approve-1" } });

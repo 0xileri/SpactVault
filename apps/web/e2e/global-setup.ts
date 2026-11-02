@@ -105,6 +105,9 @@ export default async function globalSetup() {
     VITE_NEAR_RPC_URL: fixture.rpc_url,
     VITE_VAULT_ID: fixture.vault_id,
     VITE_DEV_SIGNER_URL: `http://127.0.0.1:${SIGNER_PORT}`,
+    // a second network for the network switch; network.spec.ts keeps its hosts offline
+    VITE_TESTNET_VAULT_ID: "vault.e2e.testnet",
+    VITE_TESTNET_RPC_URL: "https://testnet-rpc.invalid",
   });
   const server = await createServer({
     root: WEB,

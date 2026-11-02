@@ -33,7 +33,7 @@ The vault enforces the policy either way. These checks keep a misconfigured host
 | `SPACT_VAULT_ID` | yes | the vault account |
 | `SPACT_AGENT_ID` | yes | the agent account that owns the key |
 | `SPACT_AGENT_KEY_FILE` | yes | near-cli key file of the agent's function-call key (`scripts/deploy-testnet.sh` writes one) |
-| `SPACT_APPROVAL_URL` | no | base URL of the approval page, for `review_url` |
+| `SPACT_APPROVAL_URL` | no | base URL of the approval page, for `review_url` (`?request=<id>&vault=<vault>`, so a site with a network switch opens the right network) |
 | `SPACT_EXPLORER_TX_URL` | no | explorer template with `{hash}`; defaults to nearblocks on testnet and mainnet |
 | `ENABLE_MAINNET_TRANSFERS` | mainnet | must be `true` to run against mainnet |
 
