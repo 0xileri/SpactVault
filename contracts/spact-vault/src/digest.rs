@@ -17,6 +17,19 @@
 //! | expires_at_ns    | u64    |
 //! | policy_version   | u64    |
 //!
+//! A `ONE_CLICK_ORIGIN_NEAR` request (route tag 1) appends its quote terms, so the owner's approval
+//! also covers the destination tuple. Direct requests (tag 0) encode exactly as before.
+//!
+//! | field                 | type   |
+//! |-----------------------|--------|
+//! | destination_chain     | string |
+//! | destination_asset     | string |
+//! | destination_recipient | string |
+//! | refund_to             | string |
+//! | min_amount_out        | u128   |
+//! | quote_hash            | string |
+//! | quote_expires_at_ns   | u64    |
+//!
 //! `string` is a little-endian u32 byte length followed by UTF-8 bytes; integers are
 //! little-endian. `request_hash = lowercase_hex(sha256(encoding))`.
 //!
@@ -43,6 +56,15 @@ pub fn encode_request(network: &str, vault_id: &str, req: &PaymentRequest) -> Ve
     put_str(&mut out, &req.reason);
     out.extend_from_slice(&req.expires_at_ns.0.to_le_bytes());
     out.extend_from_slice(&req.policy_version.to_le_bytes());
+    if let Some(t) = &req.cross_chain {
+        put_str(&mut out, &t.destination_chain);
+        put_str(&mut out, &t.destination_asset);
+        put_str(&mut out, &t.destination_recipient);
+        put_str(&mut out, t.refund_to.as_str());
+        out.extend_from_slice(&t.min_amount_out.0.to_le_bytes());
+        put_str(&mut out, &t.quote_hash);
+        out.extend_from_slice(&t.quote_expires_at_ns.0.to_le_bytes());
+    }
     out
 }
 

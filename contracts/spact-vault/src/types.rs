@@ -13,6 +13,15 @@ pub const MAX_APPROVAL_TTL_SEC: u32 = 7 * 24 * 60 * 60;
 pub const MAX_OPEN_APPROVALS: u32 = 100;
 pub const MAX_REQUESTS_PER_DAY: u32 = 1_000;
 pub const MAX_LIST_LIMIT: u32 = 100;
+/// Bounds for the 1Click cross-chain route (P1).
+pub const MAX_CROSS_CHAIN_ROUTES: usize = 4;
+pub const MAX_ROUTE_RECIPIENTS: usize = 8;
+pub const MAX_CHAIN_LEN: usize = 32;
+pub const MAX_ASSET_ID_LEN: usize = 128;
+pub const MAX_EXTERNAL_ADDRESS_LEN: usize = 128;
+/// A cross-chain request must still have this long before its quote's deadline when it is filed,
+/// approved and executed, so the deposit lands while the 1Click deposit address is still active.
+pub const QUOTE_SAFETY_MARGIN_SEC: u64 = 60;
 
 pub const NS_PER_SEC: u64 = 1_000_000_000;
 /// Budget window is the UTC calendar day: `day_id = floor(block_timestamp_ns / NS_PER_DAY)`.
@@ -31,6 +40,21 @@ pub struct TokenPolicy {
     pub daily_limit: U128,
 }
 
+/// One owner-allowlisted 1Click route (P1): `token` leaves the vault on NEAR, and 1Click is asked to
+/// deliver `destination_asset` on `destination_chain` to one of `recipients`. Strings are compared
+/// byte for byte; there is no case folding or address normalization, so a look-alike fails closed.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CrossChainRoute {
+    pub token: AccountId,
+    /// Chain name as 1Click's token list reports it, e.g. `sol` or `eth`.
+    pub destination_chain: String,
+    /// 1Click asset id of what the recipient receives, e.g. `nep141:sol-...omft.near`.
+    pub destination_asset: String,
+    /// Allowed final recipients on the destination chain, in that chain's own address format.
+    pub recipients: Vec<String>,
+}
+
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Policy {
@@ -43,6 +67,9 @@ pub struct Policy {
     pub max_requests_per_day: u32,
     /// How long a request may wait for approval and then execution.
     pub approval_ttl_sec: u32,
+    /// Allowlisted 1Click routes. Empty (the default) turns the cross-chain route off.
+    #[serde(default)]
+    pub cross_chain: Vec<CrossChainRoute>,
 }
 
 impl Policy {
@@ -53,15 +80,26 @@ impl Policy {
     pub fn allows_recipient(&self, recipient: &AccountId) -> bool {
         self.recipients.iter().any(|r| r == recipient)
     }
+
+    pub fn cross_chain_route(&self, token: &AccountId, chain: &str, asset: &str) -> Option<&CrossChainRoute> {
+        self.cross_chain
+            .iter()
+            .find(|r| &r.token == token && r.destination_chain == chain && r.destination_asset == asset)
+    }
 }
 
-/// Payment route. Only direct NEP-141 transfers on NEAR exist in P0; the cross-chain
-/// 1Click route is deliberately absent until it is designed and tested (AGENTS.md section 8).
+/// Payment route.
+///
+/// * `NearDirect`: a NEP-141 transfer to an allowlisted payee on NEAR (P0).
+/// * `OneClickOriginNear`: a NEP-141 transfer to a 1Click deposit account on NEAR, which 1Click is
+///   trusted to turn into a payment on another chain (P1, AGENTS.md section 8). Always needs the
+///   owner's approval of the exact deposit account and destination tuple.
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Route {
     NearDirect,
+    OneClickOriginNear,
 }
 
 impl Route {
@@ -69,6 +107,7 @@ impl Route {
     pub fn tag(self) -> u8 {
         match self {
             Route::NearDirect => 0,
+            Route::OneClickOriginNear => 1,
         }
     }
 }
@@ -77,6 +116,10 @@ impl Route {
 ///
 /// The spec's intermediate states AUTO_AUTHORIZED, RESERVED and SOURCE_CONFIRMED happen inside
 /// a single receipt here, so they are never observable and are not stored separately.
+///
+/// `CrossChainPending` is where the vault's part of a 1Click payment ends: the tokens reached the
+/// deposit account on NEAR. Delivery on the other chain, or a refund, is only reported by 1Click
+/// off chain, so the vault never moves out of this state on its own and never re-credits budget.
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -89,6 +132,7 @@ pub enum Status {
     TransferPending,
     Settled,
     TransferFailed,
+    CrossChainPending,
 }
 
 impl Status {
@@ -141,6 +185,13 @@ pub enum ReasonCode {
     InvalidConfig,
     InsufficientGas,
     LedgerInvariant,
+    // cross-chain route (P1)
+    RouteNotAllowed,
+    InvalidQuote,
+    QuoteExpired,
+    ExternalSettlementPending,
+    /// Used off chain: 1Click reports a refund that nobody has verified arrived in the vault.
+    RefundUnverified,
 }
 
 impl ReasonCode {
@@ -180,8 +231,34 @@ impl ReasonCode {
             ReasonCode::InvalidConfig => "INVALID_CONFIG",
             ReasonCode::InsufficientGas => "INSUFFICIENT_GAS",
             ReasonCode::LedgerInvariant => "LEDGER_INVARIANT",
+            ReasonCode::RouteNotAllowed => "ROUTE_NOT_ALLOWED",
+            ReasonCode::InvalidQuote => "INVALID_QUOTE",
+            ReasonCode::QuoteExpired => "QUOTE_EXPIRED",
+            ReasonCode::ExternalSettlementPending => "EXTERNAL_SETTLEMENT_PENDING",
+            ReasonCode::RefundUnverified => "REFUND_UNVERIFIED",
         }
     }
+}
+
+/// The terms of a 1Click quote that a cross-chain request is bound to. They come from 1Click, off
+/// chain: the vault binds them into the request hash the owner approves and enforces the quote's
+/// deadline, but it cannot check that 1Click will deliver them (AGENTS.md I8).
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CrossChainTerms {
+    pub destination_chain: String,
+    pub destination_asset: String,
+    /// The final payee on the destination chain. Never the same thing as the NEAR deposit account.
+    pub destination_recipient: String,
+    /// Where 1Click is asked to refund on NEAR. Must be the vault.
+    pub refund_to: AccountId,
+    /// The quote's minimum output, in the destination asset's smallest unit.
+    pub min_amount_out: U128,
+    /// Hex sha256 of the full quote response as the agent received it (packages/intents). It only
+    /// proves which quote was approved, not that the quote is honest.
+    pub quote_hash: String,
+    /// The quote's deadline: after it the 1Click deposit address may stop working.
+    pub quote_expires_at_ns: U64,
 }
 
 /// A persisted payment request. Every field above `status` is immutable once stored and is
@@ -194,11 +271,15 @@ pub struct PaymentRequest {
     pub route: Route,
     pub token: AccountId,
     pub amount: U128,
+    /// Who receives the tokens on NEAR. For `OneClickOriginNear` this is the quote's 1Click deposit
+    /// account, and the final payee is `cross_chain.destination_recipient`.
     pub recipient: AccountId,
     pub reason: String,
     pub created_at_ns: U64,
     pub expires_at_ns: U64,
     pub policy_version: u64,
+    /// Set for `OneClickOriginNear`, absent for `NearDirect`.
+    pub cross_chain: Option<CrossChainTerms>,
     /// Hex sha256 of the canonical request digest (see `digest.rs`).
     pub request_hash: String,
 
