@@ -70,6 +70,43 @@ function codes(a: ReturnType<typeof assess>): ProblemCode[] {
 
 const OWNER = { signerAvailable: true, signerAccountId: "owner.test.near", executeNow: true };
 
+const CROSS_TERMS = {
+  destination_chain: "sol",
+  destination_asset: "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near",
+  destination_recipient: "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV",
+  refund_to: "vault.test.near",
+  min_amount_out: "4900000",
+  quote_hash: "6327245c3a45d3d9ea72b70fbb671926e7b80f63d311bfd73dde876d5df02b26",
+  quote_expires_at_ns: (NOW + 1_800_000_000_000n).toString(),
+};
+
+function crossChain(overrides: Partial<PaymentRequest> = {}): PaymentRequest {
+  return request({ route: "ONE_CLICK_ORIGIN_NEAR", amount: "5000000", recipient: "deposit.test.near", cross_chain: CROSS_TERMS, ...overrides });
+}
+
+describe("assess a cross-chain request", () => {
+  it("passes the hash check only when the deposit address and the final recipient are the ones the vault stored", () => {
+    const stored = crossChain();
+    expect(assess({ config: CONFIG, snapshot: snapshot({ request: stored }), ...OWNER }).hashMatches).toBe(true);
+    // a lying RPC shows another deposit address, or another final recipient, with the stored hash
+    const swappedDeposit = { ...stored, recipient: "mallory.test.near" };
+    const swappedPayee = { ...stored, cross_chain: { ...CROSS_TERMS, destination_recipient: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin" } };
+    for (const shown of [swappedDeposit, swappedPayee]) {
+      const a = assess({ config: CONFIG, snapshot: snapshot({ request: shown }), ...OWNER });
+      expect(codes(a)).toContain("HASH_MISMATCH");
+      expect(a.canApprove).toBe(false);
+    }
+  });
+
+  it("refuses to approve a quote at or near its deadline", () => {
+    const late = crossChain({ cross_chain: { ...CROSS_TERMS, quote_expires_at_ns: (NOW + 59_000_000_000n).toString() } });
+    const a = assess({ config: CONFIG, snapshot: snapshot({ request: late }), ...OWNER });
+    expect(codes(a)).toContain("QUOTE_EXPIRED");
+    expect(a.canApprove).toBe(false);
+    expect(a.canReject).toBe(true);
+  });
+});
+
 describe("assess", () => {
   it("lets the owner approve a valid request whose hash matches", () => {
     const a = assess({ config: CONFIG, snapshot: snapshot(), ...OWNER });

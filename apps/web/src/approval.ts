@@ -28,7 +28,11 @@ export type ProblemCode =
   | "NO_SIGNER"
   | "NOT_CONNECTED"
   | "NOT_OWNER"
-  | "TOKEN_METADATA_MISSING";
+  | "TOKEN_METADATA_MISSING"
+  | "QUOTE_EXPIRED";
+
+/** The vault's QUOTE_SAFETY_MARGIN_SEC, in nanoseconds. */
+const QUOTE_MARGIN_NS = 60_000_000_000n;
 
 export interface Problem {
   code: ProblemCode;
@@ -95,6 +99,9 @@ export function assess({ config, snapshot, signerAvailable, signerAccountId, exe
       add("NOT_AWAITING", "Already approved. You can still reject it until it is sent.", true, false);
     }
     if (expiresInSec < 0) add("EXPIRED", "This request has expired, so it can no longer be paid.", true, false);
+    if (request.cross_chain && snapshot.nowNs + QUOTE_MARGIN_NS >= BigInt(request.cross_chain.quote_expires_at_ns)) {
+      add("QUOTE_EXPIRED", "The 1Click quote is at or near its deadline, so the vault will refuse it. Your agent needs a new quote.", true, false);
+    }
     if (request.policy_version !== vault.policy_version) {
       add("POLICY_CHANGED", "Your rules changed after this request was made, so it cannot be approved. Your agent needs to ask again.", true, false);
     }

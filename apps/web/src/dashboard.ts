@@ -60,7 +60,7 @@ export function outcomeLine(request: PaymentRequest, nowNs: bigint): string {
     case "AUTO_WITHIN_POLICY":
       return "Under your instant limit, so it was paid without asking you.";
     case "REQUIRES_OWNER_APPROVAL":
-      return "Over your instant limit, so it waits for your OK.";
+      return request.cross_chain ? "A cross-chain payment, so it waits for your OK whatever the amount." : "Over your instant limit, so it waits for your OK.";
     case "OWNER_APPROVED":
       return "You approved it. Your agent can now send it.";
     case "OWNER_DENIED":
@@ -75,9 +75,17 @@ export function outcomeLine(request: PaymentRequest, nowNs: bigint): string {
       return request.approved_by ? "You approved it, and it was sent." : "Under your instant limit, so it was sent without asking you.";
     case "SOURCE_TRANSFER_FAILED":
       return "The transfer failed, so nothing was spent.";
+    case "EXTERNAL_SETTLEMENT_PENDING":
+      return `Sent to 1Click's deposit address. Delivery on ${request.cross_chain?.destination_chain ?? "the other chain"} is up to 1Click; the vault cannot check it.`;
     case "POLICY_VERSION_CHANGED":
       return "Your rules changed after it was made, so it can no longer go through.";
     default:
       return explainReason(request.reason_code);
   }
+}
+
+/** Who a payment is for, in words: the payee on NEAR, or the final recipient of a 1Click route. */
+export function payeeLabel(request: PaymentRequest): string {
+  const t = request.cross_chain;
+  return t ? `${t.destination_recipient} on ${t.destination_chain} via 1Click` : request.recipient;
 }

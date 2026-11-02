@@ -1,7 +1,7 @@
 import type { BudgetView, PaymentRequest, TokenPolicy } from "@spact/shared";
 import { describe, expect, it } from "vitest";
 
-import { budgetProblem, budgetResetNs, isLapsed, outcomeLine, usedPercent, waitingForOwner } from "../src/dashboard.js";
+import { budgetProblem, budgetResetNs, isLapsed, outcomeLine, payeeLabel, usedPercent, waitingForOwner } from "../src/dashboard.js";
 
 const policy: TokenPolicy = { token: "token.test.near", auto_limit: "10000000", hard_tx_limit: "30000000", daily_limit: "50000000" };
 const budget: BudgetView = { token: "token.test.near", day: 20393, daily_limit: "50000000", executed: "3000000", pending: "25000000", available: "22000000" };
@@ -93,5 +93,35 @@ describe("outcomeLine", () => {
     expect(outcomeLine({ ...request("x", "AWAITING_APPROVAL", later), reason_code: "INVALID_STATE" }, now)).toBe(
       "The request is not in a state that allows this action.",
     );
+  });
+});
+
+describe("cross-chain requests in the activity list", () => {
+  const terms = {
+    destination_chain: "sol",
+    destination_asset: "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near",
+    destination_recipient: "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV",
+    refund_to: "vault.test.near",
+    min_amount_out: "4900000",
+    quote_hash: "c".repeat(64),
+    quote_expires_at_ns: "3000",
+  };
+  const crossChain = (status: PaymentRequest["status"], reason_code: PaymentRequest["reason_code"]): PaymentRequest => ({
+    ...request("xc", status, 2_000n),
+    route: "ONE_CLICK_ORIGIN_NEAR",
+    recipient: "deposit.test.near",
+    cross_chain: terms,
+    reason_code,
+  });
+
+  it("names the final recipient and the route, and says delivery is up to 1Click", () => {
+    expect(payeeLabel(crossChain("AWAITING_APPROVAL", "REQUIRES_OWNER_APPROVAL"))).toBe("7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV on sol via 1Click");
+    expect(outcomeLine(crossChain("AWAITING_APPROVAL", "REQUIRES_OWNER_APPROVAL"), 1_000n)).toBe(
+      "A cross-chain payment, so it waits for your OK whatever the amount.",
+    );
+    expect(outcomeLine(crossChain("CROSS_CHAIN_PENDING", "EXTERNAL_SETTLEMENT_PENDING"), 1_000n)).toBe(
+      "Sent to 1Click's deposit address. Delivery on sol is up to 1Click; the vault cannot check it.",
+    );
+    expect(payeeLabel(request("d", "SETTLED", 2_000n))).toBe("api.test.near");
   });
 });
