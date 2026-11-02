@@ -1,8 +1,17 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["node"],
+    "customConditions": [
+      "spact-source"
+    ],
+    "types": [
+      "node"
+    ],
     "noEmit": true
   },
-  "include": ["src", "test"]
+  "include": [
+    "src",
+    "test",
+    "vitest.config.ts"
+  ]
 }
