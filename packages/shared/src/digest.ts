@@ -15,7 +15,18 @@ import type { PaymentRequest, Route } from "./types.js";
 export const DIGEST_DOMAIN = "spact.request.v1";
 
 const U64_MAX = (1n << 64n) - 1n;
-const ROUTE_TAGS: Record<Route, number> = { NEAR_DIRECT: 0 };
+const ROUTE_TAGS: Record<Route, number> = { NEAR_DIRECT: 0, ONE_CLICK_ORIGIN_NEAR: 1 };
+
+/** Quote terms of a ONE_CLICK_ORIGIN_NEAR request, appended to the digest after the common fields. */
+export interface CrossChainDigest {
+  destinationChain: string;
+  destinationAsset: string;
+  destinationRecipient: string;
+  refundTo: string;
+  minAmountOut: bigint;
+  quoteHash: string;
+  quoteExpiresAtNs: bigint;
+}
 
 export interface DigestInput {
   network: string;
@@ -29,6 +40,8 @@ export interface DigestInput {
   reason: string;
   expiresAtNs: bigint;
   policyVersion: bigint;
+  /** Required for ONE_CLICK_ORIGIN_NEAR, absent for NEAR_DIRECT. */
+  crossChain?: CrossChainDigest | null;
 }
 
 class Writer {
@@ -79,6 +92,10 @@ class Writer {
 }
 
 export function encodeRequest(input: DigestInput): Uint8Array {
+  const crossChain = input.crossChain ?? null;
+  if ((input.route === "ONE_CLICK_ORIGIN_NEAR") !== (crossChain !== null)) {
+    throw new RangeError("cross-chain terms must come with the 1Click route, and only with it");
+  }
   const w = new Writer();
   w.str(DIGEST_DOMAIN);
   w.str(input.network);
@@ -92,6 +109,15 @@ export function encodeRequest(input: DigestInput): Uint8Array {
   w.str(input.reason);
   w.u64(input.expiresAtNs);
   w.u64(input.policyVersion);
+  if (crossChain) {
+    w.str(crossChain.destinationChain);
+    w.str(crossChain.destinationAsset);
+    w.str(crossChain.destinationRecipient);
+    w.str(crossChain.refundTo);
+    w.u128(crossChain.minAmountOut);
+    w.str(crossChain.quoteHash);
+    w.u64(crossChain.quoteExpiresAtNs);
+  }
   return w.bytes();
 }
 
@@ -119,5 +145,16 @@ export function digestInputFromRequest(network: string, vaultId: string, req: Pa
     reason: req.reason,
     expiresAtNs: BigInt(req.expires_at_ns),
     policyVersion: BigInt(req.policy_version),
+    crossChain: req.cross_chain
+      ? {
+          destinationChain: req.cross_chain.destination_chain,
+          destinationAsset: req.cross_chain.destination_asset,
+          destinationRecipient: req.cross_chain.destination_recipient,
+          refundTo: req.cross_chain.refund_to,
+          minAmountOut: parseU128(req.cross_chain.min_amount_out),
+          quoteHash: req.cross_chain.quote_hash,
+          quoteExpiresAtNs: BigInt(req.cross_chain.quote_expires_at_ns),
+        }
+      : null,
   };
 }

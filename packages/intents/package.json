@@ -1,0 +1,27 @@
+{
+  "name": "@spact/intents",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Typed NEAR Intents 1Click adapter for SpactVault's owner-approved cross-chain route: quotes, quote checks, status reconciliation and a mock",
+  "exports": {
+    ".": {
+      "spact-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@noble/hashes": "2.4.0",
+    "@spact/shared": "workspace:*",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "vitest": "5.0.3"
+  }
+}

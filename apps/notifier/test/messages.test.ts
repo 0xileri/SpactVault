@@ -22,6 +22,31 @@ describe("approvalMessage", () => {
     expect(buttonUrl).toBe("https://approve.example/?request=pay-1&vault=vault.demo.testnet");
   });
 
+  it("shows a cross-chain request's 1Click deposit address and its final recipient separately", () => {
+    const crossChain = request({
+      route: "ONE_CLICK_ORIGIN_NEAR",
+      recipient: "deposit.demo.testnet",
+      cross_chain: {
+        destination_chain: "sol",
+        destination_asset: "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near",
+        destination_recipient: "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV",
+        refund_to: "vault.demo.testnet",
+        min_amount_out: "24500000",
+        quote_hash: "b".repeat(64),
+        quote_expires_at_ns: (NOW + 1_800_000_000_000n).toString(),
+      },
+    });
+    const { text } = approvalMessage(config, { request: crossChain, token, budget, nowNs: NOW });
+    expect(text).toContain("Deposit address (1Click, on NEAR): deposit.demo.testnet");
+    expect(text).toContain("Final recipient (on sol): 7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV");
+    expect(text).toContain("Refunds go to: vault.demo.testnet");
+    expect(text).toContain("You are trusting 1Click to deliver.");
+    expect(text).not.toContain("To: deposit.demo.testnet");
+    expect(outcomeMessage({ ...crossChain, status: "CROSS_CHAIN_PENDING" }, token)).toContain(
+      "to 7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV on sol via 1Click) was sent to the 1Click deposit address on NEAR",
+    );
+  });
+
   it("warns when today's budget cannot cover the payment", () => {
     const low = { ...budget, available: "10000000" };
     expect(approvalMessage(config, { request: request(), token, budget: low, nowNs: NOW }).text).toContain(

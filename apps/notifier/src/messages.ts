@@ -52,7 +52,7 @@ export function approvalMessage(config: Pick<NotifierConfig, "network" | "vaultI
     `Payment waiting for your approval (${config.network})`,
     "",
     `Amount: ${amount(request.amount, token)}`,
-    `To: ${request.recipient}`,
+    ...destinationLines(request),
     `Token contract: ${request.token}`,
     `Vault: ${config.vaultId}`,
     `Requested by: ${request.agent_id}`,
@@ -83,13 +83,37 @@ const OUTCOMES: Partial<Record<PaymentRequest["status"], string>> = {
   DENIED: "rejected. Nothing was paid.",
   EXPIRED: "expired. Nothing was paid.",
   TRANSFER_FAILED: "approved, but the token transfer failed. Nothing was paid.",
+  CROSS_CHAIN_PENDING:
+    "sent to the 1Click deposit address on NEAR. Delivery on the other chain is reported by 1Click, not checked by the vault.",
 };
+
+/**
+ * Where the money goes. A cross-chain request names two parties, and the alert shows both: the 1Click
+ * deposit account that receives the tokens on NEAR, and the final recipient 1Click is asked to pay.
+ */
+function destinationLines(request: PaymentRequest): string[] {
+  const t = request.cross_chain;
+  if (!t) return [`To: ${request.recipient}`];
+  return [
+    `Route: cross-chain through NEAR Intents 1Click, to ${t.destination_chain}`,
+    `Deposit address (1Click, on NEAR): ${request.recipient}`,
+    `Final recipient (on ${t.destination_chain}): ${t.destination_recipient}`,
+    `They receive at least: ${t.min_amount_out} base units of ${t.destination_asset}`,
+    `Refunds go to: ${t.refund_to}`,
+    "The vault cannot check what 1Click does after the deposit. You are trusting 1Click to deliver.",
+  ];
+}
+
+function payee(request: PaymentRequest): string {
+  const t = request.cross_chain;
+  return t ? `${t.destination_recipient} on ${t.destination_chain} via 1Click` : request.recipient;
+}
 
 /** Follow-up when a request we alerted about changes state. null for states that need no message. */
 export function outcomeMessage(request: PaymentRequest, token: FtMetadata | null): string | null {
   const outcome = OUTCOMES[request.status];
   if (!outcome) return null;
-  return `Request ${request.request_id} (${amount(request.amount, token)} to ${request.recipient}) was ${outcome}`;
+  return `Request ${request.request_id} (${amount(request.amount, token)} to ${payee(request)}) was ${outcome}`;
 }
 
 /** For an open request whose expiry passed by chain time. On chain it stays open until someone calls expire_request. */
