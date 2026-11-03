@@ -349,7 +349,7 @@ The build environment still cannot reach `1click.chaindefuser.com` or `docs.near
 
 The key is fixed in code. If 1Click rotates it, these checks fail closed until the key is updated from the SDK. On a local sandbox only, `VITE_ONECLICK_SIGNER_KEY` lets the mock 1Click sign its own answers with a published test key (`MOCK_SIGNER_SEED`), and `config.ts` refuses it on testnet and mainnet.
 
-**Still not recorded:** 1Click's token list. The owner's `tokens.json` (53 KB) was not attached, so the route tests use two token entries written by hand and say so; only the USDC-on-Solana asset id is confirmed from it. **Still never seen live:** a deposit, a status after one, `SUCCESS`, `REFUNDED`, and destination-chain tx hashes.
+**Still not recorded:** 1Click's token list. The owner's `tokens.json` (53 KB) was not attached, so the route tests use two token entries written by hand and say so; only the USDC-on-Solana asset id is confirmed from it. Since one entry the schema refuses (a long symbol, an unusual chain name) would have hidden every route, the list parser now keeps the entries that parse and drops the rest. **Still never seen live:** a deposit, a status after one, `SUCCESS`, `REFUNDED`, and destination-chain tx hashes.
 
 ## Open questions (from AGENTS.md section 17)
 

@@ -37,7 +37,18 @@ export const tokenSchema = z
   })
   .loose();
 export type OneClickToken = z.infer<typeof tokenSchema>;
-export const tokenListSchema = z.array(tokenSchema).max(5000);
+/**
+ * The token list, keeping only the entries that parse. The live list is 53 kB of entries for many chains
+ * (2026-11-03) and was not recorded; one odd entry (a long symbol, an unusual chain name) must not hide every
+ * route. An entry that does not parse is simply never offered. Anything but an array still fails.
+ */
+export const tokenListSchema = z
+  .array(z.unknown())
+  .max(5000)
+  .transform((items) => items.flatMap((item) => {
+    const t = tokenSchema.safeParse(item);
+    return t.success ? [t.data] : [];
+  }));
 
 /** The `POST /v0/quote` body SpactVault sends. Only the fields it sets; the API defines more. */
 export interface QuoteRequest {

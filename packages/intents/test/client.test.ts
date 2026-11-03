@@ -70,3 +70,16 @@ describe("txExplorerLink", () => {
     expect(chainName("zz")).toBe("zz");
   });
 });
+
+describe("token list", () => {
+  it("keeps the entries that parse, so one odd entry does not hide every route", () => {
+    const list = [
+      ...TOKENS,
+      { assetId: "nep245:v2_1.omni.hot.tg:56_11111111111111111111", decimals: 18, blockchain: "bsc", symbol: "A".repeat(40) },
+      { assetId: "has spaces", decimals: 6, blockchain: "sol", symbol: "BAD" },
+      "not even an object",
+    ];
+    expect(findRoute(list, TOKEN, SOL_USDC)).toMatchObject({ origin: { symbol: "TUSD" }, destination: { symbol: "USDC" } });
+    expect(findRoute({ not: "a list" }, TOKEN, SOL_USDC)).toBeNull();
+  });
+});
