@@ -42,7 +42,8 @@ code="$(curl -sS -o /dev/null -w '%{http_code}' --path-as-is "$BASE/../../etc/pa
 
 # The 1Click proxy (ADR-033) forwards only GET /v0/tokens, GET /v0/status and POST /v0/quote; these must not
 # reach 1Click at all, so they are answered locally whatever 1Click's state.
-for probe in "GET /1click/v0/deposit/submit" "POST /1click/v0/status" "GET /1click/v0/quote" "GET /1click/" "GET /1click/../index.html"; do
+# A ".." path is cleaned before matching, so it cannot reach a forbidden 1Click path either.
+for probe in "GET /1click/v0/deposit/submit" "POST /1click/v0/status" "GET /1click/v0/quote" "GET /1click/" "GET /1click/v0/tokens/../deposit/submit"; do
   code="$(curl -sS -o /dev/null -w '%{http_code}' --path-as-is -X "${probe%% *}" "$BASE${probe#* }")"
   [ "$code" = 404 ] || [ "$code" = 400 ] && pass "1Click proxy refuses $probe ($code)" || fail "1Click proxy answered $probe with $code"
 done

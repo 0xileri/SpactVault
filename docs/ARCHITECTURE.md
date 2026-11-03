@@ -28,7 +28,7 @@ Status labels: **built** (code plus passing tests in this repo), **planned** (in
  OWNER PHONE: Telegram notifier (apps/notifier) [built]
    polls the vault -> plain-text alert with the exact terms + approval link -> follow-up when paid
 
- 1Click adapter (packages/intents) [built, mock only; no live call yet]
+ 1Click adapter (packages/intents) [built; tested on recorded live answers]
    quote request -> checked quote -> request_cross_chain_payment terms; status -> reconciliation (never re-credits)
 
  planned: API/indexer
@@ -167,4 +167,4 @@ CI uploads every job's raw output as `report-*` artifacts. The `security-report`
 | Component | Role | Authority |
 |---|---|---|
 | API (Hono on Workers) | relay agent requests, index events, send notifications | none: on-chain state wins |
-| 1Click live use (P1) | the MCP tool, the cross-chain page and the approval page's check and tracking are built and tested against a mock 1Click; no live call has been made yet | trusted off-chain quote, disclosed |
+| 1Click live use (P1) | the MCP tool, the cross-chain page and the approval page's check and tracking are built and tested against a mock 1Click and against live answers recorded on 2026-11-03; no live payment yet | trusted off-chain quote, signed by 1Click, disclosed |

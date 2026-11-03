@@ -36,6 +36,33 @@ export function liveOneClick(options: LiveOptions): OneClickApi {
   return oneClickOverHttp(base.toString(), { fetch: options.fetch, timeoutMs: options.timeoutMs, headers });
 }
 
+/**
+ * A 1Click error answer. `apiMessage` is 1Click's own `message` field, cut to 160 printable characters.
+ * Live, a quote refunding to a NEAR account that does not exist gets HTTP 400 "Internal server error"
+ * (test/fixtures/live/errors.ts), so that case gets a hint.
+ */
+export class OneClickHttpError extends Error {
+  constructor(
+    readonly path: string,
+    readonly status: number,
+    readonly apiMessage: string | null,
+  ) {
+    const hint = path === "/v0/quote" && status === 400 ? " (one known cause: the refund account does not exist on NEAR)" : "";
+    super(`1Click ${path} answered HTTP ${status}${apiMessage ? `: ${apiMessage}` : ""}${hint}`);
+  }
+}
+
+async function errorMessageOf(res: Response): Promise<string | null> {
+  try {
+    const body: unknown = await res.json();
+    const message = typeof body === "object" && body !== null ? (body as Record<string, unknown>).message : undefined;
+    // eslint-disable-next-line no-control-regex
+    return typeof message === "string" ? message.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 160) : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface HttpOptions {
   fetch?: typeof fetch | undefined;
   timeoutMs?: number | undefined;
@@ -59,7 +86,7 @@ export function oneClickOverHttp(base: string, options: HttpOptions = {}): OneCl
       headers: { ...headers, ...(init.body ? { "content-type": "application/json" } : {}) },
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) throw new Error(`1Click ${path.split("?")[0]} answered HTTP ${res.status}`);
+    if (!res.ok) throw new OneClickHttpError(path.split("?")[0] ?? path, res.status, await errorMessageOf(res));
     return res.json();
   }
 

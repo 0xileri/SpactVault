@@ -12,6 +12,7 @@ import {
   reconcile,
   statusResponseSchema,
   tokenListSchema,
+  verifyQuoteSignature,
   type OneClickApi,
   type OneClickToken,
   type Reconciliation,
@@ -80,6 +81,11 @@ export async function checkDeposit(config: AppConfig, api: OneClickApi | null, r
   const mismatches = depositMismatches(request, raw);
   if (mismatches.length > 0) return { state: "mismatch", mismatches };
   const status = statusResponseSchema.parse(raw);
+  // The record must also carry 1Click's own signature (ADR-034): the site's proxy, or anyone between, cannot
+  // make one, so a forged "1Click says" fails here even when its terms match.
+  if (!verifyQuoteSignature(status.quoteResponse, config.oneClickSignerKey)) {
+    return { state: "mismatch", mismatches: ["1Click's signature on this quote does not verify, so this record cannot be shown to come from 1Click"] };
+  }
   const [storage, tokens] = await Promise.all([tokenStorage(config.rpcUrl, request.token, request.recipient), tokensOf(api)]);
   const destination = tokens.find((t) => t.assetId === request.cross_chain?.destination_asset) ?? null;
   return { state: "verified", status, registered: storage.registered, storageMin: storage.min, destination };

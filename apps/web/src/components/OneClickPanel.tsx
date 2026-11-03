@@ -113,6 +113,9 @@ export function OneClickPanel({
               : `${q.minAmountOut} of the smallest unit of ${terms.destination_asset}`}
             , and refunds go to <Mono>{terms.refund_to}</Mono>.
           </p>
+          <p className="mt-1 text-xs opacity-80" data-testid="oneclick-signed">
+            Signed by 1Click: its signature on this quote was checked in your browser.
+          </p>
           {q.deadline ? <p className="mt-1 text-xs opacity-80">Quote deadline {formatUtc((BigInt(Date.parse(q.deadline)) * 1_000_000n).toString())}.</p> : null}
         </Notice>
       ) : null}

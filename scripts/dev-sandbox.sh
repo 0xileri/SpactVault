@@ -41,7 +41,7 @@ import { KeyPair } from "near-api-js";
 const sk = JSON.parse(readFileSync(process.argv[1], "utf8")).agent_secret_key;
 writeFileSync(process.argv[2], JSON.stringify({ public_key: KeyPair.fromString(sk).getPublicKey().toString(), private_key: sk }), { mode: 0o600 });
 ' "$FIXTURE" "$AGENT_KEY")
-(cd "$ROOT" && pnpm -s --filter @spact/shared build && pnpm -s --filter @spact/mcp build && pnpm -s --filter @spact/notifier build) >&2
+(cd "$ROOT" && pnpm -s --filter @spact/shared build && pnpm -s --filter @spact/intents build && pnpm -s --filter @spact/mcp build && pnpm -s --filter @spact/notifier build) >&2
 
 MCP_ENV=(
   "SPACT_NETWORK=sandbox"
@@ -73,4 +73,5 @@ VITE_NEAR_RPC_URL="$(field rpc_url)" \
 VITE_VAULT_ID="$(field vault_id)" \
 VITE_DEV_SIGNER_URL="http://127.0.0.1:$SIGNER_PORT" \
 VITE_ONECLICK_URL="http://127.0.0.1:$ONECLICK_PORT" \
+VITE_ONECLICK_SIGNER_KEY="ed25519:9Q3HteLhC8T2gBVNWETCZh5uR8svhy4Ze7oFL5mgAyjt" \
   pnpm exec vite --port "$WEB_PORT" --strictPort

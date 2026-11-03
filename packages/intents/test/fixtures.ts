@@ -3,9 +3,10 @@ import type { PaymentRequest } from "@spact/shared";
 import { buildQuoteRequest, type QuoteRequest } from "../src/index.js";
 
 /**
- * Synthetic 1Click answers shaped by the SDK's generated types (one-click-sdk-typescript 0.1.26).
- * They were not recorded from the live API, which the build environment cannot reach; addresses
- * and signatures are made up.
+ * Synthetic 1Click answers, shaped like the live answers recorded on 2026-11-03 (fixtures/live): the extra
+ * fields 1Click adds to its echo of the request, `appFees`, the fee fields, a quote deadline three days
+ * after the requested one, and null `swapDetails` fields before a deposit. Addresses, amounts and
+ * signatures here are made up; the tests that need a real signature use fixtures/live.
  */
 
 export const NOW = new Date("2026-11-02T12:00:00.000Z");
@@ -36,14 +37,22 @@ export function asked(overrides: Partial<Parameters<typeof buildQuoteRequest>[0]
 }
 
 /** A live quote answering `request`, as 1Click would per the SDK types. */
+/** Live, the quote's own deadline (deposit address inactive) was three days after the requested one. */
+export function addressDeadline(requested: string): string {
+  return new Date(Date.parse(requested) + 72 * 3600_000).toISOString();
+}
+
 export function quoteFor(request: QuoteRequest, quote: Record<string, unknown> = {}) {
   return {
     correlationId: "9a1b2c3d-0000-4000-8000-000000000001",
     timestamp: NOW.toISOString(),
     signature: "ed25519:4qTZ6yVVtyfV5ZMzXhvPnETPRQyMCWbXvCjnznDWK8kv8uwE1oHfDu5e1ZmK2Nmmw2EeqzL5SjQhVBLswhnmQ6Rw",
-    quoteRequest: request,
+    // 1Click echoes the request with fields of its own added, an app fee among them
+    quoteRequest: { ...request, confidentiality: "public", quoteWaitingTimeMs: 0, insured: false, appFees: [{ recipient: "f".repeat(64), fee: 1 }] },
     quote: {
-      ...(request.dry ? {} : { depositAddress: DEPOSIT, deadline: request.deadline, timeWhenInactive: request.deadline }),
+      ...(request.dry
+        ? {}
+        : { depositAddress: DEPOSIT, deadline: addressDeadline(request.deadline), timeWhenInactive: addressDeadline(request.deadline), refundFee: "0" }),
       amountIn: request.amount,
       amountInFormatted: "5.0",
       amountInUsd: "5.00",
@@ -53,6 +62,7 @@ export function quoteFor(request: QuoteRequest, quote: Record<string, unknown> =
       amountOutUsd: "4.95",
       minAmountOut: "4900000",
       timeEstimate: 20,
+      withdrawFee: "10000",
       ...quote,
     },
   };
@@ -64,7 +74,18 @@ export function statusFor(request: QuoteRequest, status: string, swapDetails: Re
     quoteResponse: quoteFor(request, quote),
     status,
     updatedAt: NOW.toISOString(),
-    swapDetails: { intentHashes: [], nearTxHashes: [], originChainTxHashes: [], destinationChainTxHashes: [], ...swapDetails },
+    // live, what has not happened yet is null, not absent
+    swapDetails: {
+      intentHashes: [],
+      nearTxHashes: [],
+      originChainTxHashes: [],
+      destinationChainTxHashes: [],
+      depositedAmount: null,
+      amountOut: null,
+      refundReason: null,
+      refundedAmount: "0",
+      ...swapDetails,
+    },
   };
 }
 

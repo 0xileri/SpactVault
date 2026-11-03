@@ -10,8 +10,8 @@
 # anywhere near the browser (none is sent). Only the three read/quote paths the site uses; nothing that submits
 # or moves funds. Cookies, auth and the page's origin are stripped on the way out, cookies on the way back.
 (oneclick) {
+	# For an https upstream Caddy already sends the upstream's own Host.
 	reverse_proxy https://1click.chaindefuser.com {
-		header_up Host {upstream_hostport}
 		header_up -Cookie
 		header_up -Authorization
 		header_up -Origin

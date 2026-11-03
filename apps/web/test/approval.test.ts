@@ -16,6 +16,7 @@ const CONFIG: AppConfig = {
   repoUrl: null,
   vaultLabel: null,
   oneClickUrl: null,
+  oneClickSignerKey: "ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc",
 };
 const NOW = 1_761_996_400_000_000_000n;
 

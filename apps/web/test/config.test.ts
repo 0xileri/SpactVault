@@ -144,3 +144,15 @@ describe("1Click URL", () => {
   });
 });
 
+
+describe("1Click signer key", () => {
+  it("is 1Click's own manager key, and only a local sandbox may use another", () => {
+    expect(parseConfig(BASE).oneClickSignerKey).toBe("ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc");
+    const mock = "ed25519:9Q3HteLhC8T2gBVNWETCZh5uR8svhy4Ze7oFL5mgAyjt";
+    expect(() => parseConfig({ ...BASE, VITE_ONECLICK_SIGNER_KEY: mock })).toThrow(/only allowed/);
+    expect(() => parseConfig({ ...BASE, VITE_NEAR_NETWORK: "mainnet", VITE_ONECLICK_SIGNER_KEY: mock })).toThrow(/only allowed/);
+    const sandbox = { ...BASE, VITE_NEAR_NETWORK: "sandbox", VITE_NEAR_RPC_URL: "http://127.0.0.1:3030" };
+    expect(parseConfig({ ...sandbox, VITE_ONECLICK_SIGNER_KEY: mock }).oneClickSignerKey).toBe(mock);
+    expect(() => parseConfig({ ...sandbox, VITE_ONECLICK_SIGNER_KEY: "not-a-key" })).toThrow(/ed25519/);
+  });
+});

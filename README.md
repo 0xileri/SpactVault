@@ -33,7 +33,7 @@ A wallet key can spend everything. A NEAR function-call key restricts which meth
 | Testnet deploy script (`scripts/deploy-testnet.sh`) | ran on testnet on 2026-10-25: `vault.spact-ileri2.testnet` |
 | Signing with a real wallet | done with Meteor Wallet on testnet (25 TUSD) and on **mainnet** (2 USDC, 2026-11-03): the owner approved and paid the waiting request on the hosted site. Other wallets untested |
 | Telegram alert for the owner (`apps/notifier`) | built, 28 unit tests and 4 tests on a local chain against a mock Bot API; not yet tried with real Telegram |
-| NEAR Intents / 1Click cross-chain route (P1) | vault route, 1Click adapter (`packages/intents`), MCP tool, approval page check against 1Click's record, live status tracking and Telegram alert, all tested on a local chain with a stand-in deposit account and a mock 1Click; **no live 1Click call yet, not on testnet or mainnet** (the deployed vaults run the earlier code). See DECISIONS ADR-032, ADR-033 |
+| NEAR Intents / 1Click cross-chain route (P1) | vault route, 1Click adapter (`packages/intents`), MCP tool, approval page check against 1Click's record, live status tracking and Telegram alert, all tested on a local chain with a stand-in deposit account and a mock 1Click, plus real 1Click quote and status answers recorded on 2026-11-03 (1Click's signatures on them verify); **no live payment yet, not on testnet or mainnet** (the deployed vaults run the earlier code). See DECISIONS ADR-032 to ADR-034 |
 
 Details: [docs/STATUS.md](docs/STATUS.md). Security mapping: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
@@ -172,7 +172,7 @@ On testnet or mainnet the page uses a real wallet through near-connect. Configur
 - **NEAR JSON-RPC**: the approval page reads the vault directly, with no backend in between
 - **MCP** (`@modelcontextprotocol/server`): the agent's tools, backed by its function-call key
 
-- **NEAR Intents 1Click** (P1, built and tested locally, **no live call yet**): the vault pays a 1Click quote's NEAR deposit address only after the owner approves the exact deposit address and destination; `packages/intents` builds and checks quotes and reads 1Click's status without ever trusting it to restore budget (DECISIONS ADR-032).
+- **NEAR Intents 1Click** (P1, built and tested locally and against recorded live answers, **no live payment yet**): the vault pays a 1Click quote's NEAR deposit address only after the owner approves the exact deposit address and destination; `packages/intents` builds and checks quotes and reads 1Click's status without ever trusting it to restore budget (DECISIONS ADR-032).
 
 ## Repo map
 

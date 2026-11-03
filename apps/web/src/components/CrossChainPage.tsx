@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { buildQuoteRequest, chainName, quoteResponseSchema, tokenListSchema, type OneClickToken, type QuoteResponse } from "@spact/intents";
+import { buildQuoteRequest, chainName, quoteResponseSchema, tokenListSchema, verifyQuoteSignature, type OneClickToken, type QuoteResponse } from "@spact/intents";
 import { formatUnits, parseUnits, type PaymentRequest } from "@spact/shared";
 
 import type { AppConfig } from "../config.js";
@@ -22,6 +22,11 @@ interface Priced {
   destination: OneClickToken;
   recipient: string;
   amount: bigint;
+}
+
+/** App fees 1Click puts in its echo of the request, in basis points of the amount. Live, it adds one unasked. */
+function appFeeBps(q: QuoteResponse): number {
+  return (q.quoteRequest.appFees ?? []).reduce((sum, a) => sum + a.fee, 0);
 }
 
 function usd(text: string | undefined): number | null {
@@ -131,6 +136,7 @@ export function CrossChainPage({ config, signer, wallet }: { config: AppConfig; 
       const parsed = quoteResponseSchema.safeParse(await api.quote(asked));
       if (!parsed.success) throw new Error("1Click's answer did not parse as a quote.");
       const q = parsed.data;
+      if (!verifyQuoteSignature(q, config.oneClickSignerKey)) throw new Error("1Click's signature on this price does not verify, so it is not shown.");
       if (q.quoteRequest.recipient !== to || q.quoteRequest.destinationAsset !== destination.assetId || q.quoteRequest.amount !== units.toString()) {
         throw new Error("1Click answered a different question (recipient, asset or amount changed).");
       }
@@ -219,7 +225,14 @@ export function CrossChainPage({ config, signer, wallet }: { config: AppConfig; 
                   {formatUnits(BigInt(priced.quote.quote.minAmountOut), priced.destination.decimals)} {priced.destination.symbol}
                 </dd>
                 <dt className="text-zinc-500">Fees and price impact</dt>
-                <dd data-testid="xc-fee">{fee === null ? "not reported" : `about $${fee.toFixed(2)}`}</dd>
+                <dd data-testid="xc-fee">
+                  {fee === null ? "not reported" : `about $${fee.toFixed(2)}`}
+                  {appFeeBps(priced.quote) > 0 ? (
+                    <span className="block text-xs text-zinc-500" data-testid="xc-app-fee">
+                      includes an app fee 1Click added: {appFeeBps(priced.quote)} basis point(s) of the amount
+                    </span>
+                  ) : null}
+                </dd>
                 <dt className="text-zinc-500">Takes about</dt>
                 <dd>{priced.quote.quote.timeEstimate !== undefined ? `${Math.round(priced.quote.quote.timeEstimate)} seconds` : "not reported"}</dd>
                 <dt className="text-zinc-500">Deadline</dt>

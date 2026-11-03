@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "e2e": "pnpm --filter @spact/shared build && playwright test",
+    "e2e": "pnpm --filter @spact/shared build && pnpm --filter @spact/intents build && playwright test",
     "dev-signer": "node --experimental-strip-types dev/dev-signer.ts"
   },
   "dependencies": {

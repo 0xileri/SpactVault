@@ -13,9 +13,13 @@ const near = chain(f);
 const ID = f.cross_chain_request_id;
 const MOCK = process.env.SPACT_MOCK_ONECLICK ?? "";
 
-/** Makes the mock 1Click's record of the fixture's deposit address say something else. */
-async function oneClickSays(patch: Record<string, unknown>) {
-  await fetch(`${MOCK}/__mock/override`, { method: "POST", body: JSON.stringify({ depositAddress: f.deposit_id, patch }) });
+/**
+ * Makes the mock 1Click's record of the fixture's deposit address say something else: signed again by the mock
+ * 1Click (1Click itself says it), or with `resign: false`, left with a signature that no longer matches
+ * (someone between the page and 1Click says it).
+ */
+async function oneClickSays(patch: Record<string, unknown>, resign = true) {
+  await fetch(`${MOCK}/__mock/override`, { method: "POST", body: JSON.stringify({ depositAddress: f.deposit_id, patch, resign }) });
 }
 
 test.afterEach(async () => {
@@ -60,6 +64,7 @@ test("a cross-chain request shows the 1Click deposit address and the final recip
   await expect(page.getByTestId("hash-check")).toHaveAttribute("data-ok", "true");
   await expect(page.getByTestId("oneclick")).toHaveAttribute("data-state", "verified");
   await expect(page.getByTestId("oneclick")).toContainText("1Click confirms this deposit address");
+  await expect(page.getByTestId("oneclick-signed")).toContainText("Signed by 1Click");
   await expect(page.getByTestId("oneclick-terms")).toContainText(`pays ${f.cross_chain_payee} on Solana at least 4.9 USDC`);
   expect((await near.request(ID))?.status).toBe("AWAITING_APPROVAL");
 });
@@ -79,6 +84,15 @@ test("a deposit address 1Click knows for another payee is refused before the wal
   await expect(page.getByTestId("oneclick")).toContainText(`final recipient: 1Click has 9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin, the vault request has ${f.cross_chain_payee}`);
   await expect(page.getByTestId("approve")).toBeDisabled();
   await expect(page.getByTestId("reject")).toBeEnabled();
+});
+
+test("a matching 1Click record without 1Click's signature is refused: a forger between the page and 1Click", async ({ page }) => {
+  // the terms still match the request; only a display field changed, which the signature covers
+  await oneClickSays({ quoteResponse: { quote: { amountOutFormatted: "4.999" } } }, false);
+  await openAndConnect(page);
+  await expect(page.getByTestId("oneclick")).toHaveAttribute("data-state", "mismatch");
+  await expect(page.getByTestId("oneclick")).toContainText("signature on this quote does not verify");
+  await expect(page.getByTestId("approve")).toBeDisabled();
 });
 
 test("an unregistered deposit address must be registered with the token before approving", async ({ page }) => {

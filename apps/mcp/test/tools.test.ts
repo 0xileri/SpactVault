@@ -1,8 +1,11 @@
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
-import { MockOneClick, type QuoteRequest } from "@spact/intents";
+import { MockOneClick, mockQuoteSigner, ONE_CLICK_MANAGER_PUBLIC_KEY, signQuoteForMock, type QuoteRequest } from "@spact/intents";
 import type { Policy, PaymentRequest } from "@spact/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// recorded from the live 1Click API on 2026-11-03
+import { body as liveQuote } from "../../../packages/intents/test/fixtures/live/quote.js";
+import { LIVE } from "../../../packages/intents/test/fixtures/live/request.js";
 import { createSpactServer } from "../src/tools.js";
 import { decodeSuccessValue, panicMessage, reasonCodeOf, type SubmitResult, type VaultClient } from "../src/vault.js";
 
@@ -60,19 +63,36 @@ const POLICY: Policy = {
 };
 
 /** MockOneClick answering like an honest 1Click; `tweak` lets a test make the quote lie. */
-function mockOneClick(tweak: (q: Record<string, unknown>) => Record<string, unknown> = (q) => q) {
+/** Signs the synthetic quotes below, standing in for 1Click's key; the live test uses 1Click's real key. */
+const SIGNER = mockQuoteSigner();
+
+/** Shaped like the live answers (packages/intents/test/fixtures/live), signed by SIGNER after any tweak. */
+function mockOneClick(tweak: (q: Record<string, unknown>) => Record<string, unknown> = (q) => q, signed = true) {
+  const finish = (q: Record<string, unknown>) => (signed ? signQuoteForMock(q, SIGNER.secretKey) : q);
   return new MockOneClick({
     tokens: [
       { assetId: `nep141:${args.token}`, decimals: 6, blockchain: "near", symbol: "TUSD" },
       { assetId: SOL_USDC, decimals: 6, blockchain: "sol", symbol: "USDC" },
     ],
     quote: (request: QuoteRequest) =>
-      tweak({
-        timestamp: NOW.toISOString(),
-        signature: "ed25519:mock",
-        quoteRequest: request,
-        quote: { depositAddress: DEPOSIT, amountIn: request.amount, amountOut: "990000", minAmountOut: "980000", deadline: request.deadline, timeEstimate: 20 },
-      }),
+      finish(
+        tweak({
+          timestamp: NOW.toISOString(),
+          signature: "ed25519:mock",
+          correlationId: "mock",
+          quoteRequest: { ...request, confidentiality: "public", quoteWaitingTimeMs: 0, insured: false, appFees: [{ recipient: "f".repeat(64), fee: 1 }] },
+          quote: {
+            depositAddress: DEPOSIT,
+            amountIn: request.amount,
+            amountOut: "990000",
+            minAmountOut: "980000",
+            deadline: new Date(Date.parse(request.deadline) + 72 * 3600_000).toISOString(),
+            timeEstimate: 20,
+            refundFee: "0",
+            withdrawFee: "10000",
+          },
+        }),
+      ),
     status: {},
   });
 }
@@ -106,9 +126,9 @@ afterEach(async () => {
   await Promise.all(clients.splice(0).map((c) => c.close()));
 });
 
-async function connect(vault: VaultClient, oneClick: MockOneClick | null = null) {
+async function connect(vault: VaultClient, oneClick: MockOneClick | null = null, deps: Partial<Parameters<typeof createSpactServer>[0]> = {}) {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await createSpactServer({ vault, config, oneClick, now: () => NOW }).connect(serverTransport);
+  await createSpactServer({ vault, config, oneClick, now: () => NOW, quoteSignerKey: SIGNER.publicKey, ...deps }).connect(serverTransport);
   const client = new Client({ name: "test", version: "0" });
   await client.connect(clientTransport);
   clients.push(client);
@@ -432,5 +452,76 @@ describe("request_cross_chain_payment", () => {
       destination_tx_hashes: ["5h3kZr8DQ9k8s1v3Cw2n4e6R8t1y3u5i7o9p1a3s5d7f9g1h3j5k7m9z1x3c5v7b9"],
     });
     expect(String((out.cross_chain as Record<string, unknown>).note)).toMatch(/1Click's report, not the vault's/);
+  });
+});
+
+describe("request_cross_chain_payment on live 1Click answers (recorded 2026-11-03)", () => {
+  const VAULT = "vault.0xileri.near";
+  const xc = {
+    token: LIVE.usdc,
+    amount_units: "1000000",
+    destination_asset: LIVE.solUsdc,
+    recipient: LIVE.recipient,
+    reason: "Recorded live quote",
+    request_id: "live-1",
+    deadline_minutes: 120,
+  };
+  const policy: Policy = {
+    tokens: [{ token: LIVE.usdc, auto_limit: "1000000", hard_tx_limit: "3000000", daily_limit: "5000000" }],
+    recipients: [],
+    max_open_approvals: 3,
+    max_requests_per_day: 20,
+    approval_ttl_sec: 86400,
+    cross_chain: [{ token: LIVE.usdc, destination_chain: "sol", destination_asset: LIVE.solUsdc, recipients: [LIVE.recipient] }],
+  };
+  // 1Click's token list was not recorded, so the two entries the route needs are written here (synthetic);
+  // the quote is the live answer, served verbatim, and checked against 1Click's real signing key
+  const live = () =>
+    new MockOneClick({
+      tokens: [
+        { assetId: `nep141:${LIVE.usdc}`, decimals: 6, blockchain: "near", symbol: "USDC" },
+        { assetId: LIVE.solUsdc, decimals: 6, blockchain: "sol", symbol: "USDC" },
+      ],
+      quote: () => liveQuote,
+      status: {},
+    });
+
+  it("files the recorded live quote, signed by 1Click, bound to its deposit address and the requested deadline", async () => {
+    const vault = fakeVault({
+      getPolicy: vi.fn(async () => policy),
+      requestCrossChain: vi.fn(
+        async (): Promise<SubmitResult> => ({
+          kind: "outcome",
+          outcome: { request_id: "live-1", status: "AWAITING_APPROVAL", reason_code: "REQUIRES_OWNER_APPROVAL", request_hash: HASH },
+          txHash: TX,
+        }),
+      ),
+    });
+    // the requested deadline is 2 hours after this instant, as in the recorded request
+    const client = await connect(vault, live(), { config: { ...config, vaultId: VAULT }, now: () => new Date("2026-11-03T10:49:50.000Z"), quoteSignerKey: ONE_CLICK_MANAGER_PUBLIC_KEY });
+    const result = await client.callTool({ name: "request_cross_chain_payment", arguments: xc });
+    expect(firstText(result)).toMatch(/^Not paid yet/);
+    expect(result.structuredContent).toMatchObject({
+      deposit_address: "041951e133e32d3ab1fc32f2df4d1ea201c689c8736895fd239fb0f68e2087bc",
+      destination_chain: "sol",
+      destination_recipient: LIVE.recipient,
+      min_amount_out: "979928",
+      quote_deadline: "2026-11-03T12:49:50.000Z",
+      app_fee_bps: 1,
+    });
+    const sent = vi.mocked(vault.requestCrossChain).mock.calls[0]?.[0];
+    expect(sent?.terms).toMatchObject({ refund_to: VAULT, quote_expires_at_ns: "1793710190000000000" });
+  });
+
+  it("refuses the same quote once a byte of it is changed, because 1Click's signature no longer covers it", async () => {
+    const vault = fakeVault({ getPolicy: vi.fn(async () => policy) });
+    const changed = structuredClone(liveQuote);
+    changed.quote.amountOutFormatted = "0.99";
+    const oneClick = new MockOneClick({ tokens: [{ assetId: `nep141:${LIVE.usdc}`, decimals: 6, blockchain: "near", symbol: "USDC" }, { assetId: LIVE.solUsdc, decimals: 6, blockchain: "sol", symbol: "USDC" }], quote: () => changed, status: {} });
+    const client = await connect(vault, oneClick, { config: { ...config, vaultId: VAULT }, now: () => new Date("2026-11-03T10:49:50.000Z"), quoteSignerKey: ONE_CLICK_MANAGER_PUBLIC_KEY });
+    const result = await client.callTool({ name: "request_cross_chain_payment", arguments: xc });
+    expect(result.isError).toBe(true);
+    expect(firstText(result)).toMatch(/signature on the quote does not verify/);
+    expect(vault.requestCrossChain).not.toHaveBeenCalled();
   });
 });

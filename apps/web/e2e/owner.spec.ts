@@ -176,7 +176,9 @@ test("allow a cross-chain recipient from a 1Click price (mock 1Click)", async ({
   await expect(page.getByTestId("xc-in")).toHaveText("1 TUSD");
   await expect(page.getByTestId("xc-out")).toHaveText("0.99 USDC on Solana");
   await expect(page.getByTestId("xc-min-out")).toHaveText("0.9801 USDC");
-  await expect(page.getByTestId("xc-fee")).toHaveText("about $0.01");
+  await expect(page.getByTestId("xc-fee")).toContainText("about $0.01");
+  // like the live API, the mock adds a 1 basis point app fee nobody asked for, and the page says so
+  await expect(page.getByTestId("xc-app-fee")).toContainText("1 basis point");
   await page.getByTestId("xc-allow").click();
   await expect(page.getByTestId("review-changes")).toContainText(`Allows cross-chain payments to sol (${SOL_USDC}) for ${SOL_PAYEE}.`);
   await clickSign(page);

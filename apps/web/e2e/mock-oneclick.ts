@@ -7,11 +7,19 @@
  *   GET  /v0/status   1Click's "record" of a deposit address, built from the vault request that names it
  *
  * The real 1Click knows a deposit address because it made it; here the sandbox fixture made it, so the mock
- * reads the request from the local chain to answer like an honest 1Click would. Tests make it lie through
- * POST /__mock/override (merged into the next answers for one deposit address) and DELETE /__mock/override.
+ * reads the request from the local chain to answer like an honest 1Click would. Its answers have the shape of
+ * the live answers recorded on 2026-11-03 (packages/intents/test/fixtures/live): HTTP 201 for quotes, the
+ * fields 1Click adds to its echo of the request, null status fields before a deposit, and a quote deadline
+ * three days after the requested one. It signs them as 1Click does, with the published mock key
+ * (MOCK_SIGNER_SEED), which the site accepts only on a local sandbox.
+ *
+ * Tests make it lie through POST /__mock/override {depositAddress, patch, resign}: the patch is merged into
+ * the next answers for that address, then signed again (a dishonest 1Click) unless `resign` is false (a
+ * forger who cannot sign, such as a tampering proxy). DELETE /__mock/override clears every override.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
+import { MOCK_SIGNER_SEED, mockQuoteSigner, signQuoteForMock } from "@spact/intents";
 import type { PaymentRequest } from "@spact/shared";
 import { JsonRpcProvider } from "near-api-js";
 
@@ -51,7 +59,12 @@ function fakeSolHash(seed: string): string {
 
 export function startMockOneClick(o: Options) {
   const provider = new JsonRpcProvider({ url: o.rpcUrl });
-  const overrides = new Map<string, Json>();
+  const overrides = new Map<string, { patch: Json; resign: boolean }>();
+  const signer = mockQuoteSigner(MOCK_SIGNER_SEED);
+  const sign = <T extends Json>(quoteResponse: T) => signQuoteForMock(quoteResponse, signer.secretKey);
+  const later = (iso: string) => new Date(Date.parse(iso) + 72 * 3600_000).toISOString();
+  /** What the live API adds to its echo of a quote request. */
+  const echoExtras = { confidentiality: "public", quoteWaitingTimeMs: 0, insured: false, appFees: [{ recipient: "5880ad2b362620fadf759cbceb1cd5737ce8c6ed7fb8e9942881e6731f9247dd", fee: 1 }] };
   const quotes: Json[] = [];
 
   async function findRequest(deposit: string): Promise<PaymentRequest | null> {
@@ -73,10 +86,12 @@ export function startMockOneClick(o: Options) {
     return {
       status: paid ? "SUCCESS" : "PENDING_DEPOSIT",
       updatedAt: new Date().toISOString(),
+      correlationId: "mock-oneclick",
       quoteResponse: {
         timestamp: new Date().toISOString(),
-        signature: "mock-oneclick:not-a-real-signature",
+        signature: "",
         quoteRequest: {
+          ...echoExtras,
           dry: false,
           swapType: "EXACT_INPUT",
           slippageTolerance: 100,
@@ -90,9 +105,28 @@ export function startMockOneClick(o: Options) {
           recipientType: "DESTINATION_CHAIN",
           deadline,
         },
-        quote: { depositAddress: r.recipient, amountIn: r.amount, amountOut: r.amount, minAmountOut: t.min_amount_out, deadline, amountOutFormatted: "mock" },
+        quote: {
+          depositAddress: r.recipient,
+          amountIn: r.amount,
+          amountOut: r.amount,
+          minAmountOut: t.min_amount_out,
+          deadline: later(deadline),
+          timeWhenInactive: later(deadline),
+          amountOutFormatted: "mock",
+          refundFee: "0",
+          withdrawFee: "0",
+        },
       },
-      swapDetails: paid ? { nearTxHashes: [], destinationChainTxHashes: [{ hash: fakeSolHash(r.recipient), explorerUrl: "https://evil.example/not-linked" }] } : {},
+      swapDetails: {
+        intentHashes: [],
+        nearTxHashes: [],
+        originChainTxHashes: [],
+        destinationChainTxHashes: paid ? [{ hash: fakeSolHash(r.recipient), explorerUrl: "https://evil.example/not-linked" }] : [],
+        depositedAmount: paid ? r.amount : null,
+        amountOut: paid ? r.amount : null,
+        refundedAmount: "0",
+        refundReason: null,
+      },
     };
   }
 
@@ -117,10 +151,11 @@ export function startMockOneClick(o: Options) {
           const amount = BigInt(String(q.amount));
           const out = (amount * 99n) / 100n;
           const min = (out * (10_000n - BigInt(Number(q.slippageTolerance ?? 0)))) / 10_000n;
-          return send(200, {
+          return send(201, sign({
             timestamp: new Date().toISOString(),
-            signature: "mock-oneclick:not-a-real-signature",
-            quoteRequest: q,
+            signature: "",
+            correlationId: "mock-oneclick",
+            quoteRequest: { ...q, ...echoExtras },
             quote: {
               amountIn: amount.toString(),
               amountOut: out.toString(),
@@ -128,15 +163,22 @@ export function startMockOneClick(o: Options) {
               amountInUsd: (Number(amount) / 1e6).toFixed(4),
               amountOutUsd: (Number(out) / 1e6).toFixed(4),
               timeEstimate: 20,
-              ...(q.dry ? {} : { depositAddress: "0".repeat(64), deadline: String(q.deadline) }),
+              withdrawFee: "0",
+              ...(q.dry ? {} : { depositAddress: "0".repeat(64), deadline: later(String(q.deadline)), timeWhenInactive: later(String(q.deadline)), refundFee: "0" }),
             },
-          });
+          }));
         }
         if (req.method === "GET" && url.pathname === "/v0/status") {
           const deposit = url.searchParams.get("depositAddress") ?? "";
           const r = await findRequest(deposit);
           if (!r) return send(404, { message: "deposit address not found (mock 1Click)" });
-          return send(200, merge(statusFor(r), overrides.get(deposit) ?? {}));
+          const honest = statusFor(r);
+          honest.quoteResponse = sign(honest.quoteResponse as Json);
+          const o = overrides.get(deposit);
+          if (!o) return send(200, honest);
+          const lied = merge(honest, o.patch);
+          if (o.resign) lied.quoteResponse = sign(lied.quoteResponse as Json);
+          return send(200, lied);
         }
         if (url.pathname === "/__mock/override") {
           if (req.method === "DELETE") {
@@ -144,7 +186,7 @@ export function startMockOneClick(o: Options) {
             return send(200, { ok: true });
           }
           const b = await body(req);
-          overrides.set(String(b.depositAddress), (b.patch ?? {}) as Json);
+          overrides.set(String(b.depositAddress), { patch: (b.patch ?? {}) as Json, resign: b.resign !== false });
           return send(200, { ok: true });
         }
         if (url.pathname === "/__mock/quotes") return send(200, quotes);

@@ -9,7 +9,10 @@ import {
   MAX_SLIPPAGE_BPS,
   QuoteError,
   reconcile,
+  ONE_CLICK_MANAGER_PUBLIC_KEY,
+  quoteResponseSchema,
   statusResponseSchema,
+  verifyQuoteSignature,
   type OneClickApi,
 } from "@spact/intents";
 import { accountId, EXTERNAL_ID_RE, explainReason, type PaymentOutcome, type PaymentRequest, type Status } from "@spact/shared";
@@ -102,6 +105,8 @@ export const requestCrossChainOutput = requestPaymentOutput.extend({
   min_amount_out: z.string(),
   quote_deadline: z.string(),
   quote_hash: z.string(),
+  /** App fees 1Click put in the quote, in basis points of the amount (live, it adds one unasked). */
+  app_fee_bps: z.number().optional(),
 });
 type RequestCrossChainOutput = z.infer<typeof requestCrossChainOutput>;
 
@@ -187,6 +192,8 @@ export interface ServerDeps {
   oneClick?: OneClickApi | null;
   /** The clock for quote deadlines. Tests pin it. */
   now?: () => Date;
+  /** The key 1Click signs quotes with. Tests pass a mock signer's key; nothing else should. */
+  quoteSignerKey?: string;
 }
 
 /** Keeps the full quote (with 1Click's signature) next to the request: what to show if 1Click ever disputes it. */
@@ -208,7 +215,7 @@ function crossChainNote(request: PaymentRequest): string {
   }
 }
 
-export function createSpactServer({ vault, config, oneClick = null, now = () => new Date() }: ServerDeps): McpServer {
+export function createSpactServer({ vault, config, oneClick = null, now = () => new Date(), quoteSignerKey = ONE_CLICK_MANAGER_PUBLIC_KEY }: ServerDeps): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION }, { maxToolInputElements: 100 });
   // tx hashes of requests this process submitted, for explorer links in get_payment_status
   const txHashes = new Map<string, string>();
@@ -330,6 +337,7 @@ export function createSpactServer({ vault, config, oneClick = null, now = () => 
       }
 
       let filed: ReturnType<typeof crossChainArgs>;
+      let appFeeBps: number;
       try {
         const asked = buildQuoteRequest({
           vaultId: config.vaultId,
@@ -343,6 +351,9 @@ export function createSpactServer({ vault, config, oneClick = null, now = () => 
         });
         const raw = await oneClick.quote(asked);
         filed = crossChainArgs(asked, raw, chainName, now());
+        // only a quote 1Click itself signed is filed (ADR-034); the owner's page checks the signature again
+        if (!verifyQuoteSignature(raw, quoteSignerKey)) throw new Error("1Click's signature on the quote does not verify");
+        appFeeBps = (quoteResponseSchema.parse(raw).quoteRequest.appFees ?? []).reduce((sum, a) => sum + a.fee, 0);
         if (config.quoteDir) saveQuote(config.quoteDir, input.request_id, { asked, response: raw, quote_hash: filed.terms.quote_hash });
       } catch (e) {
         const why = e instanceof QuoteError ? e.message : `1Click quote failed: ${(e as Error).message}`;
@@ -391,6 +402,7 @@ export function createSpactServer({ vault, config, oneClick = null, now = () => 
         quote_deadline: isoFromNs(filed.terms.quote_expires_at_ns),
         quote_hash: filed.terms.quote_hash,
       };
+      if (appFeeBps > 0) out.app_fee_bps = appFeeBps;
       const review = outcome.status === "AWAITING_APPROVAL" ? reviewLink(config, input.request_id) : null;
       if (review) out.review_url = review;
       const explorer = explorerTxLink(config, txHash);

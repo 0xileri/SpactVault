@@ -11,7 +11,7 @@ Last updated 2026-11-03 (UTC). Network mode: **NEAR mainnet** since 2026-11-01, 
 | 3. Monorepo with lint/typecheck/test/build baseline | done (pnpm + cargo workspaces, CI workflow) |
 | 4. Vault with owner/agent auth and policy validation, negative tests | done |
 | 5. Mock NEP-141 + sandbox direct payment; reservation, failure, replay, concurrency, rollover | done (rollover in unit tests only) |
-| 6. Dashboard, Telegram, wallet approval page, then P1 | dashboard, approval page and Telegram notifier built and tested on sandbox (Telegram against a mock Bot API); approval with a real wallet done on testnet; **P1 cross-chain route built and local tested (sandbox + mock 1Click), not live** (see "P1: NEAR Intents 1Click route") |
+| 6. Dashboard, Telegram, wallet approval page, then P1 | dashboard, approval page and Telegram notifier built and tested on sandbox (Telegram against a mock Bot API); approval with a real wallet done on testnet; **P1 cross-chain route built and local tested (sandbox + mock 1Click); live 1Click quote and status answers recorded and tested (ADR-034); no live payment yet** (see "P1: NEAR Intents 1Click route") |
 
 ## P0 checklist (AGENTS.md section 4)
 
@@ -29,11 +29,11 @@ Last updated 2026-11-03 (UTC). Network mode: **NEAR mainnet** since 2026-11-01, 
 
 ## P1: NEAR Intents 1Click route (2026-11-02)
 
-DECISIONS ADR-032. **Local tested only:** a sandbox vault, a sandbox account standing in for a 1Click deposit address, and `MockOneClick` answers shaped by the official SDK's types. No 1Click call was made, nothing was deployed to testnet or mainnet, and no funds moved. The deployed vaults run the earlier code and have no cross-chain route.
+DECISIONS ADR-032. **Local tested only:** a sandbox vault, a sandbox account standing in for a 1Click deposit address, and `MockOneClick` answers shaped by the official SDK's types. On 2026-11-03 the owner called the live 1Click API from their own machine (quotes and a status read, ADR-034), and those answers are now test fixtures. Nothing was deployed to testnet or mainnet, nothing was deposited and no funds moved. The deployed vaults run the earlier code and have no cross-chain route.
 
 | AGENTS.md P1 item | State |
 |---|---|
-| 10. 1Click dry quote; token discovery; request parameters validated; quote terms captured and hashed | `packages/intents`: quote request builder (EXACT_INPUT, ORIGIN_CHAIN, refund to the vault), token-list route lookup, quote checks, canonical quote hash; mock-tested. The website's cross-chain page asks for a dry quote through the site's `/1click` proxy (ADR-033). **No live dry quote yet** (API host unreachable here) |
+| 10. 1Click dry quote; token discovery; request parameters validated; quote terms captured and hashed | `packages/intents`: quote request builder (EXACT_INPUT, ORIGIN_CHAIN, refund to the vault), token-list route lookup, quote checks, canonical quote hash; mock-tested. The website's cross-chain page asks for a dry quote through the site's `/1click` proxy (ADR-033). A live dry quote and a live quote were recorded on 2026-11-03 from the owner's machine (this environment still cannot reach the host) and are tested, signatures included (ADR-034). The site's own `/1click` proxy has not called 1Click yet |
 | 11. Human-approved NEAR-origin payment through 1Click, live statuses, refund state | vault `request_cross_chain_payment` (always owner-approved, deposit account and destination bound into the approved hash, quote deadline enforced, budget never re-credited), approval page and Telegram alert showing deposit address and final recipient apart, status reconciliation (`REFUND_UNVERIFIED`). The approval page now refuses to approve until 1Click's record of the deposit address matches, and follows 1Click's status with explorer links for both chains (ADR-033); **sandbox and mock 1Click only, no live payment yet** |
 | 12. MCP bridge with a restricted spend-request capability | done: `request_payment` (ADR-018) and `request_cross_chain_payment` (ADR-033, live only with `ENABLE_1CLICK_LIVE=true`); the website makes agent keys for the three agent methods |
 | 13. Approval expiry, idempotent retries, event reconciliation, quote mutation tests | quote expiry (QUOTE_EXPIRED) and quote mutation tests (T07, T14) added; event reconciliation and retries unchanged |
@@ -48,13 +48,27 @@ DECISIONS ADR-032. **Local tested only:** a sandbox vault, a sandbox account sta
   - both are mapped in `packages/security-lab/src/catalog.ts`, and `scripts/security-report.sh` runs the new `vitest:intents` suite.
 - **Unverified:**
   - the NEAR-origin deposit mechanics (plain `ft_transfer`; storage registration of the deposit account, which the approval page now checks and offers);
-  - the live API's answers, including `GET /v0/status` for a deposit address before its deposit;
-  - the quote signature's format.
+  - the live API's answers after a deposit (`SUCCESS`, `REFUNDED`, destination tx hashes); before a deposit they are recorded (ADR-034);
+  - 1Click's token list (not recorded yet).
   - INTEGRATIONS.md has the sources.
+
+### Live 1Click answers (2026-11-03)
+
+DECISIONS ADR-034. Recorded by the owner with curl from their own machine (this environment cannot reach the host), no API key, nothing deposited. Fixtures: `packages/intents/test/fixtures/live`.
+
+- **Does `/v0/status` answer for an unused deposit address?** Yes: HTTP 200 `PENDING_DEPOSIT`, with 1Click's full, signed record of the quote. The approval page's check works on it (web and intents tests on the recorded answer).
+- **Is a plain `ft_transfer` the deposit 1Click detects?** Not confirmed. The docs say to transfer the tokens to the deposit address, without naming the NEAR call, and the deposit address is a contract-less implicit account, where only a plain `ft_transfer` can land. The first real deposit, in the mainnet run, settles it (ADR-033 has the citations).
+- **Bugs the live answers exposed, now fixed:**
+  - real status answers did not parse (null fields), which would have blocked every cross-chain approval;
+  - the vault request was bound to the quote's deadline, three days after the one asked for, instead of the earlier one.
+- **New, and checked:**
+  - 1Click's ed25519 signature on a quote verifies with the manager key from its SDK;
+  - the MCP tool, the approval page and the cross-chain page now refuse an unsigned or altered quote.
+- **Not recorded:** the token list, and anything after a real deposit.
 
 ## Owner flows on the website (2026-11-03)
 
-DECISIONS ADR-033. Everything the owner does now runs on the website with a browser wallet, each step shown on a review screen first, with a confirmation box on mainnet. **Tested on a local chain only**, with the sandbox dev signer standing in for the wallet; not yet run with Meteor on testnet or mainnet, and no 1Click call made.
+DECISIONS ADR-033. Everything the owner does now runs on the website with a browser wallet, each step shown on a review screen first, with a confirmation box on mainnet. **Tested on a local chain only**, with the sandbox dev signer standing in for the wallet; not yet run with Meteor on testnet or mainnet. 1Click's live answers are recorded (ADR-034), but the site's own `/1click` proxy has not called it yet.
 
 | Flow | Where | State |
 |---|---|---|
@@ -272,11 +286,12 @@ Agent key (2026-10-24): the agent now signs with a function-call key that reache
 - P1: after the deposit, 1Click is trusted; the vault cannot verify delivery or a refund (ADR-032, THREAT_MODEL).
 - P1: the agent files the quote's deposit address. The approval page now checks it against 1Click's own record (ADR-033), but that check is only as good as 1Click's answer and the site's proxy.
 - Website owner flows: tested on a local chain only; Meteor has not signed a vault creation, a funding, a rules change or an agent key yet. Between the two vault-creation transactions a temporary key sits in the tab, and the site has no Content-Security-Policy (THREAT_MODEL).
-- P1: NEAR-origin 1Click deposit mechanics are unverified (INTEGRATIONS.md).
+- P1: NEAR-origin 1Click deposit mechanics are unverified: that 1Click detects a plain `ft_transfer`, and whether the implicit deposit account needs registering with USDC (the approval page offers it). The first real deposit settles both (ADR-033).
+- P1: the 1Click manager key is fixed in code (ADR-034). If 1Click rotates it, cross-chain quotes and approvals fail closed until the key is updated from its SDK.
 
 ## Next smallest task
 
-The live 1Click check (blocked here: the build environment cannot reach `1click.chaindefuser.com`): one token list, one dry quote for about 1 native USDC to USDC on Solana and on Base, and one status read, parsed with `packages/intents` and recorded as fixtures (INTEGRATIONS.md).
+Record 1Click's token list as a fixture (the owner's `tokens.json` from 2026-11-03, or a fresh `GET /v0/tokens`) and run `findRoute` and the cross-chain page's destination list against it. Base was not quoted yet; one dry quote to USDC on Base would cover the second chain the owner may pick.
 
 Then the mainnet run, on https://spactvault.xyz with Meteor, each step confirmed by the owner (README "Run your own vault from the website"): create `vault2.0xileri.near`, fund it with about 3 USDC, create `agent2.0xileri.near` with its key, allow one recipient, let the agent request 1 USDC cross-chain through the MCP server, approve it, and record every transaction hash, the deposit address and 1Click's final status here. Only after the owner confirms: point the site's mainnet config at vault2 with `vault.0xileri.near` listed as the P0 vault (`VITE_VAULT_ID=vault2.0xileri.near`, `VITE_EXTRA_VAULTS=vault.0xileri.near=P0 vault`).
 

@@ -6,6 +6,8 @@ import { extname, join, resolve, sep } from "node:path";
 
 import { createServer } from "vite";
 
+import { MOCK_SIGNER_PUBLIC_KEY } from "@spact/intents";
+
 import { startMockOneClick } from "./mock-oneclick.ts";
 
 const WEB = resolve(import.meta.dirname, "..");
@@ -112,6 +114,8 @@ export default async function globalSetup() {
     VITE_VAULT_ID: fixture.vault_id,
     VITE_DEV_SIGNER_URL: `http://127.0.0.1:${SIGNER_PORT}`,
     VITE_ONECLICK_URL: oneClick.url,
+    // the mock signs its answers with the published sandbox-only key; config.ts refuses it elsewhere
+    VITE_ONECLICK_SIGNER_KEY: MOCK_SIGNER_PUBLIC_KEY,
     SPACT_MOCK_ONECLICK: oneClick.url,
     // a second network for the network switch; network.spec.ts keeps its hosts offline
     VITE_TESTNET_VAULT_ID: "vault.e2e.testnet",

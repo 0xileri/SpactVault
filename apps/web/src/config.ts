@@ -1,3 +1,4 @@
+import { ONE_CLICK_MANAGER_PUBLIC_KEY } from "@spact/intents";
 import { accountId } from "@spact/shared";
 
 export type NetworkId = "sandbox" | "testnet" | "mainnet";
@@ -24,6 +25,11 @@ export interface AppConfig {
    * (the Railway image proxies it, ADR-033) or an https URL. null: no 1Click features on this build.
    */
   oneClickUrl: string | null;
+  /**
+   * The key 1Click signs quotes with. Always the manager key from 1Click's SDK, except on a local sandbox,
+   * where VITE_ONECLICK_SIGNER_KEY lets the mock 1Click sign its own answers (ADR-034).
+   */
+  oneClickSignerKey: string;
 }
 
 /** A build without a vault yet: only the Security Lab works. */
@@ -144,7 +150,14 @@ function parseCommon(env: Record<string, string | undefined>): CommonConfig {
 
   const oneClickUrl = parseOneClickUrl(env.VITE_ONECLICK_URL, network);
 
-  return { network, rpcUrl: rpc.toString(), explorerTxUrl, explorerAccountUrl, securityReportUrl, devSignerUrl, repoUrl, oneClickUrl };
+  let oneClickSignerKey: string = ONE_CLICK_MANAGER_PUBLIC_KEY;
+  if (env.VITE_ONECLICK_SIGNER_KEY) {
+    if (network !== "sandbox") throw new ConfigError("VITE_ONECLICK_SIGNER_KEY is only allowed with VITE_NEAR_NETWORK=sandbox");
+    if (!/^ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}$/.test(env.VITE_ONECLICK_SIGNER_KEY)) throw new ConfigError("VITE_ONECLICK_SIGNER_KEY must be an ed25519: public key");
+    oneClickSignerKey = env.VITE_ONECLICK_SIGNER_KEY;
+  }
+
+  return { network, rpcUrl: rpc.toString(), explorerTxUrl, explorerAccountUrl, securityReportUrl, devSignerUrl, repoUrl, oneClickUrl, oneClickSignerKey };
 }
 
 export function parseConfig(env: Record<string, string | undefined>): AppConfig {
