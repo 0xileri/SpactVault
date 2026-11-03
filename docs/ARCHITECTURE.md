@@ -101,11 +101,14 @@ React 19 + Vite 8 + Tailwind 4. No backend: it reads the vault directly over NEA
 - **Owner pages (ADR-033).** Every transaction is built as data (`src/owner/actions.ts`) and shown on a review screen (`SignReview`) before the wallet is asked; on mainnet a confirmation box gates the Sign button. Creating a vault:
 
 ```text
-wallet (owner):  CreateAccount + Transfer + AddKey(temporary full-access key made in this tab) -> name.<owner>
-this tab:        fetch public/contracts/spact_vault-p1.wasm, check sha256 against src/contracts.ts
-                 DeployContract + FunctionCall new(owner, agents, network, policy) + DeleteKey(temporary)
-                 signed with the temporary key, vault -> vault, waits for FINAL
-page:            view_account code_hash == manifest, view_access_key_list empty, get_config as asked
+named vault (ADR-035):
+wallet (owner):  fetch public/contracts/spact_vault-p1.wasm, check sha256 against src/contracts.ts
+                 CreateAccount + Transfer + DeployContract(wasm) + AddKey(function call: new, made in this tab) -> name.<owner>
+this tab:        FunctionCall new(owner, agents, network, policy), signed with that key, waits for FINAL
+any wallet (ADR-035):
+wallet (owner):  Transfer -> hex(public key made in this tab), which creates that implicit account
+this tab:        DeployContract + FunctionCall new(...) + DeleteKey(its key), signed with that key
+page:            view_account code_hash == manifest, keys: none or only `new` keys (lockProblem), get_config as asked
 ```
 
 - **1Click from the page.** Through the Railway image's same-origin proxy `/1click/` (three paths only). The approval page compares 1Click's record of a cross-chain request's deposit address with the request before Approve works, checks the address's token registration, and after the deposit polls `GET /v0/status` every 5 s, linking both chains' transactions to explorers it picks itself.

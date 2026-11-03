@@ -70,10 +70,15 @@ pub fn cross_chain_policy(recipients: &[&AccountId], token: &AccountId) -> Value
 /// Creates `name.<root>` with its own random key. Without `.keys(...)`, near-workspaces gives every
 /// subaccount the same deterministic key, which would let any one of them sign as the others.
 pub async fn account(root: &Account, name: &str) -> anyhow::Result<Account> {
+    account_with(root, name, NearToken::from_near(10)).await
+}
+
+/// `account` with a chosen starting balance.
+pub async fn account_with(root: &Account, name: &str, balance: NearToken) -> anyhow::Result<Account> {
     Ok(root
         .create_subaccount(name)
         .keys(SecretKey::from_random(KeyType::ED25519))
-        .initial_balance(NearToken::from_near(10))
+        .initial_balance(balance)
         .transact()
         .await?
         .into_result()?)
@@ -82,7 +87,8 @@ pub async fn account(root: &Account, name: &str) -> anyhow::Result<Account> {
 pub async fn setup() -> anyhow::Result<Deployment> {
     let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
-    let owner = account(&root, "owner").await?;
+    // enough NEAR for the browser tests to create several vaults from the site (3.2 NEAR each)
+    let owner = account_with(&root, "owner", NearToken::from_near(40)).await?;
     let agent = account(&root, "agent").await?;
     let mallory = account(&root, "mallory").await?;
     let api = account(&root, "api").await?;

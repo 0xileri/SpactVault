@@ -14,7 +14,7 @@ import { NewVault } from "./components/owner/NewVault.js";
 import { SecurityLab } from "./components/SecurityLab.js";
 import { Badge, Button, Mono, Notice } from "./components/ui.js";
 import { networksOf, type AppConfig, type NetworkId, type SiteConfig } from "./config.js";
-import { buildForCodeHash, type VaultBuild } from "./contracts.js";
+import { buildForCodeHash, lockProblem, type VaultBuild } from "./contracts.js";
 import { errorMessage } from "./format.js";
 import { LinkContext, NETWORK_LABEL, placeLink, placeOf, switchHref, useLink } from "./network.js";
 import { createSigner } from "./signers/index.js";
@@ -203,7 +203,8 @@ function useUnlistedVault(config: SiteConfig, vaultId: string | null): UnlistedC
         const build = buildForCodeHash(account.codeHash);
         if (!build) return alive && setCheck({ state: "refused", why: `Its code (hash ${account.codeHash}) is not a SpactVault build this site knows.` });
         const keys = await viewAccessKeyList(config.rpcUrl, vaultId);
-        if (keys.length > 0) return alive && setCheck({ state: "refused", why: `It still has ${keys.length} access key(s), so whoever holds them could change its code.` });
+        const locked = lockProblem(keys, vaultId);
+        if (locked) return alive && setCheck({ state: "refused", why: locked });
         if (alive) setCheck({ state: "ok", build });
       } catch (e) {
         if (alive) setCheck({ state: "refused", why: `Could not check it: ${errorMessage(e)}` });
@@ -376,7 +377,7 @@ export function App({ config: chosen, configs = [chosen] }: { config: SiteConfig
                         )}
                         {unlisted?.state === "ok" ? (
                           <span data-testid="unlisted-vault" title={`Code hash ${unlisted.build.codeHash}`}>
-                            <Badge tone="info">not listed by this site · verified {unlisted.build.id.toUpperCase()} code, no keys</Badge>
+                            <Badge tone="info">not listed by this site · verified {unlisted.build.id.toUpperCase()} code, locked</Badge>
                           </span>
                         ) : null}
                       </>

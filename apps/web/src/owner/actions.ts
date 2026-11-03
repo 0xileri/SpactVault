@@ -11,8 +11,19 @@ const TGAS = 1_000_000_000_000n;
 export const OWNER_CALL_GAS = (30n * TGAS).toString();
 export const SET_POLICY_GAS = (50n * TGAS).toString();
 export const TOKEN_CALL_GAS = (30n * TGAS).toString();
-/** Gas for the vault's `new`. The deploy itself costs little gas but needs the code's storage paid for. */
+/** Gas for the vault's `new` in the any-wallet transaction (deploy + new + delete key, signed by the tab's full-access key). */
 export const INIT_GAS = 100n * TGAS;
+/**
+ * Gas for `new` signed with a named vault's init key. A function-call key's allowance has to cover all the
+ * gas a call attaches, not what it burns, so this is kept low: `new` burns a few Tgas (browser test).
+ */
+export const NAMED_INIT_GAS = 30n * TGAS;
+/**
+ * Gas allowance of a named vault's init key: 0.05 NEAR, enough for one `new` at NAMED_INIT_GAS. That costs
+ * 0.003 NEAR at mainnet's floor gas price (0.1 NEAR per 1,000 Tgas) and 0.03 NEAR at the local sandbox's
+ * (1 NEAR per 1,000 Tgas). What is left after that call can only pay for `new` calls the vault refuses.
+ */
+export const INIT_KEY_ALLOWANCE = 10n ** 24n / 20n;
 
 export const YOCTO_PER_NEAR = 10n ** 24n;
 /** NEAR's storage price: 10^19 yoctoNEAR per byte, 1 NEAR per 100 kB. */
@@ -70,16 +81,36 @@ export function vaultStorageNeeded(wasmBytes: number): bigint {
 }
 
 /**
- * Transaction 1 of creating a vault, signed by the owner's wallet: create `vaultId` as its sub-account,
- * fund it, and give it one temporary full-access key that only this browser tab holds. Transaction 2
- * (owner/deploy.ts) uses that key once to deploy, initialize and delete the key.
+ * Transaction 1 of creating a named vault, signed by the owner's wallet (ADR-035): create `vaultId` as its
+ * sub-account, fund it, install the published code, and add an init key that this tab made: a function-call
+ * key that can only call `new` on the vault, with gas for one call. No full-access key is ever added, which
+ * Meteor and other wallets refuse to do for a website. Transaction 2 (owner/deploy.ts) uses the init key once.
  */
-export function createVaultAccountActions(fundYocto: bigint, temporaryPublicKey: string): WalletAction[] {
+export function createVaultAccountActions(vaultId: string, fundYocto: bigint, wasm: Uint8Array, initPublicKey: string): WalletAction[] {
   return [
     { type: "CreateAccount" },
     { type: "Transfer", params: { deposit: fundYocto.toString() } },
-    { type: "AddKey", params: { publicKey: temporaryPublicKey, accessKey: { permission: "FullAccess" } } },
+    { type: "DeployContract", params: { code: wasm } },
+    {
+      type: "AddKey",
+      params: { publicKey: initPublicKey, accessKey: { permission: { receiverId: vaultId, allowance: INIT_KEY_ALLOWANCE.toString(), methodNames: ["new"] } } },
+    },
   ];
+}
+
+/**
+ * The "any wallet" path (ADR-035): the wallet only sends NEAR. Sending NEAR to an implicit account (64 hex
+ * characters, the hex of a public key) creates it with that key as its full-access key; the key is this tab's,
+ * so the tab can then install code, or swap keys, and delete it. Every NEAR wallet can sign a transfer.
+ */
+export function fundImplicitActions(fundYocto: bigint): WalletAction[] {
+  return [{ type: "Transfer", params: { deposit: fundYocto.toString() } }];
+}
+
+/** The implicit account a public key controls: the hex of its 32 bytes. */
+export async function implicitAccountId(publicKey: string): Promise<string> {
+  const { keyToImplicitAddress } = await import("near-api-js");
+  return keyToImplicitAddress(publicKey);
 }
 
 export interface InitArgs {
@@ -303,11 +334,16 @@ export function describeActions(receiverId: string, actions: WalletAction[]): Ac
         return { summary: `Create the account ${receiverId}`, detail: { type: a.type } };
       case "Transfer":
         return { summary: `Send ${formatNear(BigInt(a.params.deposit))} NEAR to ${receiverId}`, detail: { type: a.type, ...a.params } };
+      case "DeployContract":
+        return {
+          summary: `Install ${a.params.code.length.toLocaleString("en-US")} bytes of contract code on ${receiverId}`,
+          detail: { type: a.type, params: { code: `<${a.params.code.length} bytes, checked against the published build>` } },
+        };
       case "AddKey": {
         const p = a.params.accessKey.permission;
         const summary =
           p === "FullAccess"
-            ? `Give ${receiverId} a temporary full-access key (${a.params.publicKey.slice(0, 16)}…), held only by this tab`
+            ? `Give ${receiverId} a full-access key (${a.params.publicKey.slice(0, 16)}…), which can change anything on it`
             : `Give ${receiverId} a key that can only call ${p.methodNames.join(", ")} on ${p.receiverId}${p.allowance ? `, with at most ${formatNear(BigInt(p.allowance))} NEAR of gas` : ""}`;
         return { summary, detail: { type: a.type, ...a.params } };
       }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { formatUnits, parseUnits, viewAccount } from "@spact/shared";
+import { formatUnits, parseUnits, viewAccessKeyList, viewAccount, type AccessKeyEntry } from "@spact/shared";
 
 import type { AppConfig } from "../../config.js";
 import { errorMessage, formatAmount } from "../../format.js";
@@ -13,6 +13,8 @@ import {
   createAgentActions,
   formatNear,
   fundActions,
+  fundImplicitActions,
+  implicitAccountId,
   parseNear,
   removeAgentActions,
   setPausedActions,
@@ -20,13 +22,20 @@ import {
   topUpNearActions,
   type Decimals,
 } from "../../owner/actions.js";
-import { generateKey } from "../../owner/deploy.js";
+import {
+  clearPendingAgent,
+  generateKey,
+  loadPendingAgent,
+  savePendingAgent,
+  swapToRestrictedKey,
+  type PendingAgent,
+} from "../../owner/deploy.js";
 import { loadOwnerSnapshot, type OwnerSnapshot } from "../../near/owner.js";
 import type { OwnerSigner } from "../../signers/index.js";
 import type { SignerState } from "../../useSigner.js";
 import { Badge, Button, Card, Mono, Notice } from "../ui.js";
 import { RulesEditor } from "./RulesEditor.js";
-import { SignReview, TextField, TxLink } from "./SignReview.js";
+import { MainnetConfirm, SignReview, TextField, TxLink } from "./SignReview.js";
 
 type Open = null | "fund" | "near" | "pause" | "add-agent" | { remove: string } | "agent-key" | "rules";
 
@@ -451,12 +460,30 @@ function AddAgentForm({ snap, config, signer, wallet, onClose, onDone }: FormPro
   );
 }
 
+type AgentMode = "named" | "any-wallet";
+
 type KeyStep =
   | { kind: "form" }
-  | { kind: "download"; agentId: string; fund: bigint; allowance: bigint }
+  | { kind: "download"; agentId: string; fund: bigint; allowance: bigint; pending: PendingAgent | null }
   | { kind: "create"; agentId: string; fund: bigint; allowance: bigint }
+  | { kind: "fund"; pending: PendingAgent }
+  | { kind: "swap"; pending: PendingAgent }
   | { kind: "add"; agentId: string }
   | { kind: "done"; agentId: string };
+
+/** True when `keys` is exactly the restricted agent key: one function-call key for the agent methods on `vaultId`. */
+export function onlyRestrictedKey(keys: AccessKeyEntry[], publicKey: string, vaultId: string): boolean {
+  const [k] = keys;
+  return (
+    keys.length === 1 &&
+    k !== undefined &&
+    k.publicKey === publicKey &&
+    k.permission.kind === "FunctionCall" &&
+    k.permission.receiverId === vaultId &&
+    k.permission.methodNames.length === AGENT_METHODS.length &&
+    AGENT_METHODS.every((m) => k.permission.kind === "FunctionCall" && k.permission.methodNames.includes(m))
+  );
+}
 
 /** Saves `text` as a file through the browser's download, without any network request. */
 function download(filename: string, text: string) {
@@ -475,9 +502,16 @@ function download(filename: string, text: string) {
  * Agent key setup. The key pair is made in this tab; the owner downloads the key file once; only then does
  * the wallet create the account with that public key, so a key is never put on chain before it is saved.
  * The secret is dropped from memory right after the download.
+ *
+ * Two ways (ADR-035):
+ * - named (`agent2.<owner>`): the wallet creates the account with the restricted key.
+ * - any wallet (64 hex characters): the wallet only sends NEAR to an implicit account whose temporary key this
+ *   tab holds; the tab then adds the restricted key and deletes its own in one transaction.
  */
 function AgentKeyFlow({ snap, config, signer, wallet, onClose, onDone }: FormProps) {
   const owner = snap.config.owner;
+  const vaultId = snap.config.vault_id;
+  const [mode, setMode] = useState<AgentMode>("named");
   const [name, setName] = useState("agent2");
   const [near, setNear] = useState("0.3");
   const [allowance, setAllowance] = useState("0.25");
@@ -487,6 +521,9 @@ function AgentKeyFlow({ snap, config, signer, wallet, onClose, onDone }: FormPro
   const publicKey = useRef<string | null>(null);
   const secret = useRef<string | null>(null);
 
+  const [note, setNote] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+
   useEffect(
     () => () => {
       secret.current = null;
@@ -494,20 +531,97 @@ function AgentKeyFlow({ snap, config, signer, wallet, onClose, onDone }: FormPro
     [],
   );
 
+  // an any-wallet agent this tab started (a reload, or a wallet that redirected): pick it up where it stopped
+  useEffect(() => {
+    const pending = loadPendingAgent(config.network, vaultId);
+    if (!pending) return;
+    let alive = true;
+    void (async () => {
+      const account = await viewAccount(config.rpcUrl, pending.agentId);
+      if (!alive) return;
+      if (!account) {
+        setStep({ kind: "fund", pending });
+        return;
+      }
+      const keys = await viewAccessKeyList(config.rpcUrl, pending.agentId);
+      if (!alive) return;
+      if (keys.some((k) => k.publicKey === pending.temporary.publicKey)) {
+        setStep({ kind: "swap", pending });
+      } else if (onlyRestrictedKey(keys, pending.restrictedPublicKey, vaultId)) {
+        clearPendingAgent();
+        setStep(snap.config.agents.includes(pending.agentId) ? { kind: "done", agentId: pending.agentId } : { kind: "add", agentId: pending.agentId });
+      } else {
+        clearPendingAgent();
+        setNote(`${pending.agentId} exists but no longer has this tab's temporary key, so this tab cannot finish it.`);
+      }
+    })().catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [config, vaultId, snap.config.agents]);
+
   async function prepare() {
     setBusy(true);
     setError(null);
+    setNote(null);
     try {
-      const agentId = subAccountId(name.trim(), owner);
-      if (agentId === snap.config.vault_id) throw new Error("That is the vault's own name.");
       const fund = parseNear(near);
       const allow = parseNear(allowance);
       if (allow === 0n) throw new Error("The key needs some gas allowance.");
-      if (await viewAccount(config.rpcUrl, agentId)) throw new Error(`${agentId} already exists. Pick another name.`);
+      if (allow >= fund) throw new Error("The account needs more NEAR than the key's gas allowance.");
       const key = await generateKey();
+      let agentId: string;
+      let pending: PendingAgent | null = null;
+      if (mode === "named") {
+        agentId = subAccountId(name.trim(), owner);
+        if (agentId === vaultId) throw new Error("That is the vault's own name.");
+      } else {
+        const temporary = await generateKey();
+        agentId = await implicitAccountId(temporary.publicKey);
+        pending = {
+          network: config.network,
+          rpcUrl: config.rpcUrl,
+          vaultId,
+          agentId,
+          temporary,
+          restrictedPublicKey: key.publicKey,
+          fundYocto: fund.toString(),
+          allowanceYocto: allow.toString(),
+          createdAt: Date.now(),
+        };
+      }
+      if (await viewAccount(config.rpcUrl, agentId)) throw new Error(`${agentId} already exists. Pick another name.`);
       publicKey.current = key.publicKey;
       secret.current = key.secretKey;
-      setStep({ kind: "download", agentId, fund, allowance: allow });
+      setStep({ kind: "download", agentId, fund, allowance: allow, pending });
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function swap(pending: PendingAgent) {
+    setBusy(true);
+    setError(null);
+    try {
+      const sent = await swapToRestrictedKey(
+        pending.rpcUrl,
+        pending.agentId,
+        pending.temporary,
+        pending.restrictedPublicKey,
+        vaultId,
+        AGENT_METHODS,
+        BigInt(pending.allowanceYocto),
+      );
+      if (sent.failure) throw new Error(`The key swap failed: ${sent.failure}`);
+      const keys = await viewAccessKeyList(config.rpcUrl, pending.agentId);
+      if (!onlyRestrictedKey(keys, pending.restrictedPublicKey, vaultId)) {
+        throw new Error(`${pending.agentId} does not show exactly the restricted key yet. Reload the page in a few seconds to check again.`);
+      }
+      clearPendingAgent();
+      onDone(sent.txHash);
+      setStep(snap.config.agents.includes(pending.agentId) ? { kind: "done", agentId: pending.agentId } : { kind: "add", agentId: pending.agentId });
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -522,6 +636,7 @@ function AgentKeyFlow({ snap, config, signer, wallet, onClose, onDone }: FormPro
           <p>
             This file is the agent&apos;s key for <Mono>{step.agentId}</Mono>. It can only call {AGENT_METHODS.join(", ")} on <Mono>{snap.config.vault_id}</Mono>, with at
             most {formatNear(step.allowance)} NEAR of gas. It is shown once: this page forgets it after the download.
+            {step.pending ? " The account name is 64 characters because your wallet only sends it NEAR; the file has it." : null}
           </p>
         </Notice>
         <p className="text-sm">
@@ -532,13 +647,88 @@ function AgentKeyFlow({ snap, config, signer, wallet, onClose, onDone }: FormPro
             if (!secret.current || !publicKey.current) return;
             download(`${step.agentId}.json`, agentKeyFile(step.agentId, publicKey.current, secret.current));
             secret.current = null;
-            setStep({ kind: "create", agentId: step.agentId, fund: step.fund, allowance: step.allowance });
+            if (step.pending) {
+              // kept in this tab's sessionStorage so a reload or a wallet redirect can still finish the swap
+              savePendingAgent(step.pending);
+              setStep({ kind: "fund", pending: step.pending });
+            } else {
+              setStep({ kind: "create", agentId: step.agentId, fund: step.fund, allowance: step.allowance });
+            }
           }}
           testId="download-key"
         >
-          Download {step.agentId}.json
+          Download {step.pending ? "the key file" : `${step.agentId}.json`}
         </Button>
       </div>
+    );
+  }
+
+  if (step.kind === "fund") {
+    const p = step.pending;
+    return (
+      <SignReview
+        config={config}
+        signer={signer}
+        wallet={wallet}
+        title={`Send NEAR to the new agent account`}
+        receiverId={p.agentId}
+        signerId={owner}
+        actions={fundImplicitActions(BigInt(p.fundYocto))}
+        changes={[
+          `Sends ${formatNear(BigInt(p.fundYocto))} NEAR to ${p.agentId}. That creates the account, with a temporary key only this tab holds.`,
+          "Next, this tab swaps that key for the one you saved, so the agent's only key is the restricted one.",
+        ]}
+        onDone={(txHash) => {
+          setStep({ kind: "swap", pending: p });
+          onDone(txHash);
+        }}
+      />
+    );
+  }
+
+  if (step.kind === "swap") {
+    const p = step.pending;
+    const exact = {
+      signer: p.agentId,
+      receiverId: p.agentId,
+      actions: [
+        {
+          type: "AddKey",
+          params: { publicKey: p.restrictedPublicKey, accessKey: { permission: { receiverId: vaultId, allowance: p.allowanceYocto, methodNames: [...AGENT_METHODS] } } },
+        },
+        { type: "DeleteKey", params: { publicKey: p.temporary.publicKey } },
+      ],
+    };
+    return (
+      <Card className="space-y-4">
+        <div data-testid="agent-swap">
+          <p className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">Review before this tab signs</p>
+          <h3 className="mt-1 text-base font-semibold text-ink">Give {p.agentId.slice(0, 12)}… its restricted key</h3>
+        </div>
+        <ul className="list-disc space-y-1 pl-5 text-sm text-zinc-800">
+          <li>
+            Adds the key you saved (<Mono>{p.restrictedPublicKey.slice(0, 16)}…</Mono>). It can only call {AGENT_METHODS.join(", ")} on <Mono>{vaultId}</Mono>, with at most{" "}
+            {formatNear(BigInt(p.allowanceYocto))} NEAR of gas.
+          </li>
+          <li>Deletes this tab&apos;s temporary key, so nobody can move the account&apos;s NEAR or sign anything else as it.</li>
+          <li>Your wallet is not asked: this tab signs with the temporary key, which never leaves it.</li>
+        </ul>
+        <details className="rounded-lg bg-zinc-50 p-4 text-sm ring-1 ring-line">
+          <summary className="cursor-pointer text-xs font-medium text-zinc-600">Exact transaction</summary>
+          <pre className="mt-2 max-h-80 overflow-auto rounded bg-white p-3 text-xs ring-1 ring-line" data-testid="agent-swap-json">
+            {JSON.stringify(exact, null, 2)}
+          </pre>
+        </details>
+        {config.network === "mainnet" ? <MainnetConfirm checked={confirmed} onChange={setConfirmed} /> : null}
+        {error ? (
+          <p className="text-sm break-words text-rose-700" data-testid="agent-key-error">
+            {error}
+          </p>
+        ) : null}
+        <Button onClick={() => void swap(p)} disabled={busy || (config.network === "mainnet" && !confirmed)} testId="swap-key">
+          {busy ? "Signing in this tab…" : "Swap the key"}
+        </Button>
+      </Card>
     );
   }
 
@@ -589,8 +779,27 @@ function AgentKeyFlow({ snap, config, signer, wallet, onClose, onDone }: FormPro
 
   return (
     <div className="space-y-3">
+      {note ? <Notice tone="warn" title="An earlier setup could not be finished"><p>{note}</p></Notice> : null}
+      <fieldset className="space-y-2" data-testid="agent-mode">
+        <legend className="text-sm font-medium text-zinc-800">Agent account</legend>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="radio" name="agent-mode" checked={mode === "named"} onChange={() => setMode("named")} className="mt-0.5" data-testid="agent-mode-named" />
+          <span>
+            A name under yours, like <Mono>agent2.{owner}</Mono>. Your wallet creates it with the restricted key.
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="radio" name="agent-mode" checked={mode === "any-wallet"} onChange={() => setMode("any-wallet")} className="mt-0.5" data-testid="agent-mode-any-wallet" />
+          <span>
+            Any wallet: your wallet only sends NEAR, to a new 64-character account. This tab then swaps in the restricted key. Use this if your wallet refuses the
+            named way.
+          </span>
+        </label>
+      </fieldset>
       <div className="grid gap-3 sm:grid-cols-3">
-        <TextField label="Agent name" value={name} onChange={setName} testId="agent-name" hint={<>Creates <Mono>{`${name || "…"}.${owner}`}</Mono></>} />
+        {mode === "named" ? (
+          <TextField label="Agent name" value={name} onChange={setName} testId="agent-name" hint={<>Creates <Mono>{`${name || "…"}.${owner}`}</Mono></>} />
+        ) : null}
         <TextField label="NEAR for gas" value={near} onChange={setNear} testId="agent-near" inputMode="decimal" />
         <TextField label="Gas allowance of the key" value={allowance} onChange={setAllowance} testId="agent-allowance" inputMode="decimal" hint="The key stops working after spending this much on gas." />
       </div>

@@ -86,3 +86,25 @@ export async function fetchBuild(build: VaultBuild, fetchImpl: typeof fetch = fe
   }
   return wasm;
 }
+
+/** The only kind of key a locked vault may still have: a function-call key for `new` on the vault itself. */
+interface KeyLike {
+  permission: { kind: string; receiverId?: string; methodNames?: string[] };
+}
+
+/**
+ * Why a vault account is not locked, or null when it is (ADR-035). Locked means nobody can change its code
+ * or sign as it: no access keys at all, or only spent init keys, function-call keys that can call nothing but
+ * `new` on the vault, which the vault refuses once it runs. A named vault created through a wallet keeps one
+ * such key, because a wallet may not add a full-access key that the vault could delete.
+ */
+export function lockProblem(keys: KeyLike[], vaultId: string): string | null {
+  const other = keys.filter(
+    (k) => !(k.permission.kind === "FunctionCall" && k.permission.receiverId === vaultId && k.permission.methodNames?.length === 1 && k.permission.methodNames[0] === "new"),
+  );
+  if (other.length === 0) return null;
+  const full = other.filter((k) => k.permission.kind === "FullAccess").length;
+  return full > 0
+    ? `It has ${full} full-access key(s), so whoever holds them could change its code.`
+    : `It has ${other.length} access key(s) that can do more than call \`new\` on it.`;
+}

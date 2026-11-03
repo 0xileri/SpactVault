@@ -1,4 +1,15 @@
-import { SignError, type OwnerSigner } from "./types.js";
+import { SignError, type OwnerSigner, type WalletAction } from "./types.js";
+
+/** JSON has no bytes: contract code travels to the dev signer as base64. */
+function forJson(actions: WalletAction[]): unknown[] {
+  return actions.map((a) => {
+    if (a.type !== "DeployContract") return a;
+    let binary = "";
+    const code = a.params.code;
+    for (let i = 0; i < code.length; i += 0x8000) binary += String.fromCharCode(...code.subarray(i, i + 0x8000));
+    return { type: a.type, params: { code: btoa(binary) } };
+  });
+}
 
 /**
  * Sandbox-only signer. Sends the unsigned transaction to apps/web/dev/dev-signer.ts on localhost,
@@ -37,7 +48,7 @@ export function createDevSigner(baseUrl: string): OwnerSigner {
       const res = await fetch(`${baseUrl}/sign`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ receiverId, actions }),
+        body: JSON.stringify({ receiverId, actions: forJson(actions) }),
       });
       const body: unknown = await res.json().catch(() => null);
       const rec = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
