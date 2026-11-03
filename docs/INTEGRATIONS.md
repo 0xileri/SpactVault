@@ -195,18 +195,23 @@ min_amount_out=4900000 quote_hash=sha256("quote")=6327245c...02b26 quote_expires
 | Quote request | `dry`, `swapType` (`EXACT_INPUT`), `slippageTolerance` (basis points), `originAsset`, `depositType` (`ORIGIN_CHAIN`), `destinationAsset`, `amount` (smallest unit), `refundTo`, `refundType` (`ORIGIN_CHAIN`), `recipient`, `recipientType` (`DESTINATION_CHAIN`), `deadline` (ISO), `depositMode` (`SIMPLE`) | SDK types; matches AGENTS.md section 8 |
 | Quote response | `timestamp`, `signature`, `quoteRequest` (echo), `quote.depositAddress`, `quote.depositMemo` (some chains), `quote.amountIn`, `quote.amountOut`, `quote.minAmountOut`, `quote.deadline`, `quote.timeWhenInactive`, `quote.timeEstimate`. Dry quotes omit `depositAddress`, `deadline` and `timeWhenInactive` | SDK types |
 | Quote signature | "Signature of the 1Click service confirming the quote for the specific deposit address. Must be saved on the client side" | **no documented verification method or key**, so not used as authority (ADR-032) |
-| Status values | `KNOWN_DEPOSIT_TX`, `PENDING_DEPOSIT`, `INCOMPLETE_DEPOSIT`, `PROCESSING`, `SUCCESS`, `REFUNDED`, `FAILED`; `swapDetails.refundedAmount`, `depositedAmount`, `nearTxHashes` | SDK types; all treated as 1Click's report |
+| Status values | `KNOWN_DEPOSIT_TX`, `PENDING_DEPOSIT`, `INCOMPLETE_DEPOSIT`, `PROCESSING`, `SUCCESS`, `REFUNDED`, `FAILED`; `swapDetails.refundedAmount`, `depositedAmount`, `nearTxHashes`, `originChainTxHashes` and `destinationChainTxHashes` (`{hash, explorerUrl}`) | SDK types; all treated as 1Click's report. The site links tx hashes to explorers it chooses by chain name (`packages/intents/src/explorer.ts`), never to 1Click's `explorerUrl` |
+| Status before a deposit | the approval page reads `GET /v0/status` for a deposit address nothing was sent to yet, and expects `PENDING_DEPOSIT` with the full `quoteResponse` | **unverified**: the page's deposit-address check depends on it (ADR-033). If 1Click answers 404 instead, Approve stays off and the check needs another source |
+| CORS | not known | the hosted site does not depend on it: the Railway image proxies `/1click/` for `GET /v0/tokens`, `GET /v0/status` and `POST /v0/quote` only (apps/web/Caddyfile, ADR-033). GitHub Pages has no 1Click features |
+| Display fields | `quote.amountInFormatted`, `amountOutFormatted`, `amountInUsd`, `amountOutUsd` | SDK types; shown on the cross-chain page as 1Click's estimate (fees and price impact = in USD minus out USD), never used for a check |
 | NEAR asset ids | `nep141:<token contract>` (SDK README examples) | the vault's token must also appear in `GET /v0/tokens` with `blockchain: near` before use |
 | NEAR-origin deposit | a plain `ft_transfer` of the exact amount to `depositAddress` | **unverified**: the docs say the swap starts after the deposit, but whether the deposit account needs `storage_deposit`, and that a plain `ft_transfer` is detected, were not confirmed |
 | Testnet | none, per AGENTS.md section 8 (owner's check of 2026-10-23) | so every test here uses `MockOneClick` and a sandbox stand-in deposit account |
 
-The adapter is `packages/intents`. Its live client refuses to start unless `ENABLE_1CLICK_LIVE` is true. Its fixtures are synthetic, shaped by the SDK types and marked as such, not recorded from the live API.
+The adapter is `packages/intents`. Its live client refuses to start unless `ENABLE_1CLICK_LIVE` is true. Its fixtures are synthetic, shaped by the SDK types and marked as such, not recorded from the live API. The browser tests use `apps/web/e2e/mock-oneclick.ts`, a mock server named as such, that answers from the local chain and can be told to lie.
+
+**Live check still to do (2026-11-03).** The build environment still cannot reach `1click.chaindefuser.com`, so no real response has been parsed yet. Before the first mainnet cross-chain payment: one `GET /v0/tokens`, one dry `POST /v0/quote` for about 1 native USDC to USDC on Solana and on Base, and one `GET /v0/status` for a fresh deposit address; parse each with `packages/intents`, fix any schema mismatch, and record the answers (no keys in them) as test fixtures.
 
 ## Not integrated yet
 
 | Integration | Status | Notes |
 |---|---|---|
-| NEAR Intents / 1Click | adapter and vault route built and tested locally (P1, ADR-032); **no live call** | see "NEAR Intents / 1Click" above |
+| NEAR Intents / 1Click | adapter, vault route, MCP tool and website pages built and tested locally (P1, ADR-032, ADR-033); **no live call** | see "NEAR Intents / 1Click" above |
 | Telegram Bot API | not started | |
 
 ## Hackathon submission (from `HACKATHON.md`, owner copy of 2026-10-23)

@@ -26,17 +26,47 @@ import type { OwnerSigner } from "../../signers/index.js";
 import type { SignerState } from "../../useSigner.js";
 import { Badge, Button, Card, Mono, Notice } from "../ui.js";
 import { RulesEditor } from "./RulesEditor.js";
-import { SignReview, TextField } from "./SignReview.js";
+import { SignReview, TextField, TxLink } from "./SignReview.js";
 
 type Open = null | "fund" | "near" | "pause" | "add-agent" | { remove: string } | "agent-key" | "rules";
 
-function Section({ id, title, children, aside }: { id: string; title: string; children: ReactNode; aside?: ReactNode }) {
+interface Confirmed {
+  section: string;
+  txHash: string | null;
+}
+
+function Section({
+  id,
+  title,
+  children,
+  aside,
+  confirmed,
+  config,
+}: {
+  id: string;
+  title: string;
+  children: ReactNode;
+  aside?: ReactNode;
+  confirmed: Confirmed | null;
+  config: AppConfig;
+}) {
   return (
     <section id={id} aria-label={title} className="scroll-mt-28 space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-lg font-semibold tracking-tight text-ink">{title}</h2>
         {aside ? <div className="text-xs text-zinc-500">{aside}</div> : null}
       </div>
+      {confirmed?.section === id ? (
+        <div data-testid={`confirmed-${id}`}>
+          <Notice tone="good" title="Confirmed on chain">
+            {confirmed.txHash ? (
+              <p>
+                Transaction <TxLink config={config} txHash={confirmed.txHash} />
+              </p>
+            ) : null}
+          </Notice>
+        </div>
+      ) : null}
       {children}
     </section>
   );
@@ -53,6 +83,7 @@ export function Manage({ config, signer, wallet }: Props) {
   const [snap, setSnap] = useState<OwnerSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<Open>(null);
+  const [confirmed, setConfirmed] = useState<Confirmed | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -90,10 +121,20 @@ export function Manage({ config, signer, wallet }: Props) {
     const m = snap.tokens.find((t) => t.token === token)?.metadata;
     return m ? { decimals: m.decimals, symbol: m.symbol } : null;
   };
-  const done = () => {
+  /** After a signed change: close the form, say it is on chain in its section, and read the vault again. */
+  const doneIn = (section: string) => (txHash: string | null) => {
+    setConfirmed({ section, txHash });
+    setOpen(null);
+    // the RPC's final state can trail a just-signed transaction by a block or two
     void refresh();
+    for (const ms of [2_000, 5_000]) setTimeout(() => void refresh(), ms);
+  };
+  const reopen = (o: Open) => {
+    setConfirmed(null);
+    setOpen(o);
   };
   const review = { config, signer, wallet };
+  const sec = { confirmed, config };
 
   return (
     <div className="space-y-10" data-testid="manage">
@@ -113,7 +154,7 @@ export function Manage({ config, signer, wallet }: Props) {
         ) : null}
       </div>
 
-      <Section id="fund" title="Add money">
+      <Section id="fund" title="Add money" {...sec}>
         <Card className="space-y-4">
           <ul className="space-y-1 text-sm">
             {snap.tokens.map((t) => (
@@ -130,15 +171,15 @@ export function Manage({ config, signer, wallet }: Props) {
             </li>
           </ul>
           {open === "fund" ? (
-            <FundForm snap={snap} {...review} onClose={() => setOpen(null)} onDone={done} />
+            <FundForm snap={snap} {...review} onClose={() => setOpen(null)} onDone={doneIn("fund")} />
           ) : open === "near" ? (
-            <NearForm snap={snap} {...review} onClose={() => setOpen(null)} onDone={done} />
+            <NearForm snap={snap} {...review} onClose={() => setOpen(null)} onDone={doneIn("fund")} />
           ) : (
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => setOpen("fund")} testId="open-fund">
+              <Button onClick={() => reopen("fund")} testId="open-fund">
                 Add tokens
               </Button>
-              <Button variant="secondary" onClick={() => setOpen("near")} testId="open-near">
+              <Button variant="secondary" onClick={() => reopen("near")} testId="open-near">
                 Add NEAR for storage
               </Button>
             </div>
@@ -146,7 +187,7 @@ export function Manage({ config, signer, wallet }: Props) {
         </Card>
       </Section>
 
-      <Section id="pause" title="Pause">
+      <Section id="pause" title="Pause" {...sec}>
         <Card className="space-y-4">
           <p className="text-sm">
             {vault.paused ? (
@@ -168,24 +209,24 @@ export function Manage({ config, signer, wallet }: Props) {
               actions={setPausedActions(!vault.paused)}
               changes={[vault.paused ? "Payments within your rules go out again." : "No payment leaves the vault until you unpause it."]}
               onCancel={() => setOpen(null)}
-              onDone={done}
+              onDone={doneIn("pause")}
             />
           ) : (
-            <Button variant={vault.paused ? "primary" : "danger"} onClick={() => setOpen("pause")} disabled={!isOwner} testId="open-pause">
+            <Button variant={vault.paused ? "primary" : "danger"} onClick={() => reopen("pause")} disabled={!isOwner} testId="open-pause">
               {vault.paused ? "Unpause" : "Pause all payments"}
             </Button>
           )}
         </Card>
       </Section>
 
-      <Section id="agents" title="Agents">
+      <Section id="agents" title="Agents" {...sec}>
         <Card className="space-y-4">
           <ul className="space-y-2 text-sm" data-testid="agent-list">
             {vault.agents.length === 0 ? <li className="text-zinc-600">No agents. Nobody can ask this vault to pay.</li> : null}
             {vault.agents.map((a) => (
               <li key={a} className="flex flex-wrap items-center justify-between gap-2">
                 <Mono>{a}</Mono>
-                <Button variant="danger" onClick={() => setOpen({ remove: a })} disabled={!isOwner} testId={`remove-agent-${a}`}>
+                <Button variant="danger" onClick={() => reopen({ remove: a })} disabled={!isOwner} testId={`remove-agent-${a}`}>
                   Remove
                 </Button>
               </li>
@@ -200,44 +241,44 @@ export function Manage({ config, signer, wallet }: Props) {
               actions={removeAgentActions(open.remove)}
               changes={[`${open.remove} can no longer ask for payments. Its approved but unpaid requests can no longer be paid.`]}
               onCancel={() => setOpen(null)}
-              onDone={done}
+              onDone={doneIn("agents")}
             />
           ) : open === "add-agent" ? (
-            <AddAgentForm snap={snap} {...review} onClose={() => setOpen(null)} onDone={done} />
+            <AddAgentForm snap={snap} {...review} onClose={() => setOpen(null)} onDone={doneIn("agents")} />
           ) : (
-            <Button variant="secondary" onClick={() => setOpen("add-agent")} disabled={!isOwner} testId="open-add-agent">
+            <Button variant="secondary" onClick={() => reopen("add-agent")} disabled={!isOwner} testId="open-add-agent">
               Add an existing account as agent
             </Button>
           )}
         </Card>
       </Section>
 
-      <Section id="agent-key" title="Give your agent a key">
+      <Section id="agent-key" title="Give your agent a key" {...sec}>
         <Card className="space-y-4">
           <p className="text-sm text-zinc-600">
             Creates a new agent account under yours whose only key can call {AGENT_METHODS.join(", ")} on this vault, and nothing else. The key is made in this
             browser and saved to your computer as a file for the agent&apos;s MCP server. It is never sent anywhere.
           </p>
           {open === "agent-key" ? (
-            <AgentKeyFlow snap={snap} {...review} onClose={() => setOpen(null)} onDone={done} />
+            <AgentKeyFlow snap={snap} {...review} onClose={() => setOpen(null)} onDone={() => void refresh()} />
           ) : (
-            <Button onClick={() => setOpen("agent-key")} disabled={!isOwner} testId="open-agent-key">
+            <Button onClick={() => reopen("agent-key")} disabled={!isOwner} testId="open-agent-key">
               Set up an agent key
             </Button>
           )}
         </Card>
       </Section>
 
-      <Section id="rules" title="Rules" aside={`version ${vault.policy_version}`}>
+      <Section id="rules" title="Rules" aside={`version ${vault.policy_version}`} {...sec}>
         <RulesEditor
           {...review}
           vault={vault}
           policy={policy}
           meta={meta}
           editing={open === "rules"}
-          onEdit={() => setOpen("rules")}
+          onEdit={() => reopen("rules")}
           onClose={() => setOpen(null)}
-          onDone={done}
+          onDone={doneIn("rules")}
           canEdit={isOwner}
         />
       </Section>
@@ -248,7 +289,7 @@ export function Manage({ config, signer, wallet }: Props) {
 interface FormProps extends Props {
   snap: OwnerSnapshot;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (txHash: string | null) => void;
 }
 
 function FundForm({ snap, config, signer, wallet, onClose, onDone }: FormProps) {
@@ -515,7 +556,10 @@ function AgentKeyFlow({ snap, config, signer, wallet, onClose, onDone }: FormPro
           `Creates ${step.agentId} with ${formatNear(step.fund)} NEAR for gas.`,
           `Its only key is the one you just saved. It cannot move NEAR or tokens, change the rules, approve payments, or call any other contract.`,
         ]}
-        onDone={() => setStep(snap.config.agents.includes(step.agentId) ? { kind: "done", agentId: step.agentId } : { kind: "add", agentId: step.agentId })}
+        onDone={(txHash) => {
+          setStep(snap.config.agents.includes(step.agentId) ? { kind: "done", agentId: step.agentId } : { kind: "add", agentId: step.agentId });
+          onDone(txHash);
+        }}
       />
     );
   }
@@ -531,9 +575,9 @@ function AgentKeyFlow({ snap, config, signer, wallet, onClose, onDone }: FormPro
         signerId={owner}
         actions={addAgentActions(step.agentId)}
         changes={[`${step.agentId} may ask this vault to pay, within the rules.`]}
-        onDone={() => {
+        onDone={(txHash) => {
           setStep({ kind: "done", agentId: step.agentId });
-          onDone();
+          onDone(txHash);
         }}
       />
     );

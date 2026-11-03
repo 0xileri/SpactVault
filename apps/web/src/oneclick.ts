@@ -11,7 +11,9 @@ import {
   oneClickOverHttp,
   reconcile,
   statusResponseSchema,
+  tokenListSchema,
   type OneClickApi,
+  type OneClickToken,
   type Reconciliation,
   type StatusResponse,
 } from "@spact/intents";
@@ -21,8 +23,17 @@ import type { AppConfig } from "./config.js";
 import { errorMessage } from "./format.js";
 import { tokenStorage } from "./near/owner.js";
 
+const clients = new Map<string, OneClickApi>();
+
+/** One client per 1Click URL, so its token list is fetched once per page. */
 export function oneClickFor(config: Pick<AppConfig, "oneClickUrl">): OneClickApi | null {
-  return config.oneClickUrl ? oneClickOverHttp(config.oneClickUrl, { timeoutMs: 15_000 }) : null;
+  if (!config.oneClickUrl) return null;
+  let api = clients.get(config.oneClickUrl);
+  if (!api) {
+    api = oneClickOverHttp(config.oneClickUrl, { timeoutMs: 15_000 });
+    clients.set(config.oneClickUrl, api);
+  }
+  return api;
 }
 
 export type DepositCheck =
@@ -30,7 +41,32 @@ export type DepositCheck =
   | { state: "checking" }
   | { state: "error"; message: string }
   | { state: "mismatch"; mismatches: string[] }
-  | { state: "verified"; status: StatusResponse; registered: boolean | null; storageMin: bigint | null };
+  | {
+      state: "verified";
+      status: StatusResponse;
+      registered: boolean | null;
+      storageMin: bigint | null;
+      /** 1Click's token-list entry for the destination asset, for showing amounts; null if not listed. */
+      destination: OneClickToken | null;
+    };
+
+const tokenLists = new WeakMap<OneClickApi, Promise<OneClickToken[]>>();
+
+/** 1Click's token list, fetched once per client. Display only: an empty list just means raw units are shown. */
+function tokensOf(api: OneClickApi): Promise<OneClickToken[]> {
+  let list = tokenLists.get(api);
+  if (!list) {
+    list = api
+      .tokens()
+      .then((raw) => {
+        const parsed = tokenListSchema.safeParse(raw);
+        return parsed.success ? parsed.data : [];
+      })
+      .catch(() => []);
+    tokenLists.set(api, list);
+  }
+  return list;
+}
 
 /** Compares 1Click's record of the request's deposit address with the request, and checks the address can receive the token. */
 export async function checkDeposit(config: AppConfig, api: OneClickApi | null, request: PaymentRequest): Promise<DepositCheck> {
@@ -44,8 +80,9 @@ export async function checkDeposit(config: AppConfig, api: OneClickApi | null, r
   const mismatches = depositMismatches(request, raw);
   if (mismatches.length > 0) return { state: "mismatch", mismatches };
   const status = statusResponseSchema.parse(raw);
-  const storage = await tokenStorage(config.rpcUrl, request.token, request.recipient);
-  return { state: "verified", status, registered: storage.registered, storageMin: storage.min };
+  const [storage, tokens] = await Promise.all([tokenStorage(config.rpcUrl, request.token, request.recipient), tokensOf(api)]);
+  const destination = tokens.find((t) => t.assetId === request.cross_chain?.destination_asset) ?? null;
+  return { state: "verified", status, registered: storage.registered, storageMin: storage.min, destination };
 }
 
 export interface Tracking {

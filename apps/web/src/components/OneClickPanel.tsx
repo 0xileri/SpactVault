@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { chainName, txExplorerLink } from "@spact/intents";
-import type { PaymentRequest } from "@spact/shared";
+import { formatUnits, type PaymentRequest } from "@spact/shared";
 
 import type { AppConfig } from "../config.js";
 import { formatUtc } from "../format.js";
@@ -105,10 +105,13 @@ export function OneClickPanel({
     <div className="space-y-3" data-testid="oneclick" data-state="verified" data-status={status}>
       {open ? (
         <Notice tone="good" title="1Click confirms this deposit address">
-          <p>
-            1Click&apos;s own record says this address is for {terms.destination_asset} to <Mono>{terms.destination_recipient}</Mono> on{" "}
-            {chainName(terms.destination_chain)}, at least <Mono>{q.minAmountOut}</Mono> raw units out
-            {q.amountOutFormatted ? ` (about ${q.amountOutFormatted} expected)` : ""}, refunds to <Mono>{terms.refund_to}</Mono>.
+          <p data-testid="oneclick-terms">
+            1Click&apos;s own record of this address matches the request: it pays <Mono>{terms.destination_recipient}</Mono> on{" "}
+            {chainName(terms.destination_chain)} at least{" "}
+            {check.destination
+              ? `${formatUnits(BigInt(q.minAmountOut), check.destination.decimals)} ${check.destination.symbol}`
+              : `${q.minAmountOut} of the smallest unit of ${terms.destination_asset}`}
+            , and refunds go to <Mono>{terms.refund_to}</Mono>.
           </p>
           {q.deadline ? <p className="mt-1 text-xs opacity-80">Quote deadline {formatUtc((BigInt(Date.parse(q.deadline)) * 1_000_000n).toString())}.</p> : null}
         </Notice>

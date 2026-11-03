@@ -159,7 +159,8 @@ const server = createServer((req, res) => {
       return send(req, res, 400, { ok: false, error: (e as Error).message });
     }
     try {
-      const result: unknown = await owner.signAndSendTransaction({ receiverId: tx.receiverId, actions: tx.list, throwOnFailure: false });
+      // FINAL, so the page's reads (finality "final") already see what this transaction did
+      const result: unknown = await owner.signAndSendTransaction({ receiverId: tx.receiverId, actions: tx.list, throwOnFailure: false, waitUntil: "FINAL" });
       const status = (result as { status?: unknown } | null)?.status;
       const failure = typeof status === "object" && status !== null && "Failure" in status ? (status as { Failure: unknown }).Failure : null;
       if (failure) return send(req, res, 200, { ok: false, error: JSON.stringify(failure), txHash: txHashOf(result) });

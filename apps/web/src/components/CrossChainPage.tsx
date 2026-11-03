@@ -240,7 +240,10 @@ export function CrossChainPage({ config, signer, wallet }: { config: AppConfig; 
                   meta={meta}
                   title={`Allow cross-chain payments to ${priced.recipient} on ${chainName(priced.destination.blockchain)}`}
                   onCancel={() => setAllowing(false)}
-                  onDone={() => void refresh()}
+                  onDone={() => {
+                    void refresh();
+                    for (const ms of [2_000, 5_000]) setTimeout(() => void refresh(), ms);
+                  }}
                 />
               ) : (
                 <Button onClick={() => setAllowing(true)} testId="xc-allow">

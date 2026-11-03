@@ -122,7 +122,7 @@ export function PolicyReview({
   meta: Decimals;
   title?: string;
   onCancel?: (() => void) | undefined;
-  onDone?: (() => void) | undefined;
+  onDone?: ((txHash: string | null) => void) | undefined;
 }) {
   const problems = policyProblems(after, vault.vault_id);
   const changes = policyChanges(before, after, meta);
@@ -170,7 +170,7 @@ export function RulesEditor({
   canEdit: boolean;
   onEdit: () => void;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (txHash: string | null) => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftOf(policy, meta));
   const [after, setAfter] = useState<Policy | null>(null);

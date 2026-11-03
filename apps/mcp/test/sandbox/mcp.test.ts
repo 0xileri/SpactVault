@@ -60,7 +60,7 @@ function pay(request_id: string, amount: bigint, recipient = sb.apiId, reason = 
 }
 
 describe("Spact MCP server on a sandbox chain", () => {
-  it("offers exactly two tools", async () => {
+  it("offers exactly three tools", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(["get_payment_status", "request_cross_chain_payment", "request_payment"]);
   });

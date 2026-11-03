@@ -6,7 +6,7 @@
 
 SpactVault (Spact for short) is a payment-policy firewall for AI agents on NEAR. An agent asks a NEAR vault contract to pay someone. The contract enforces the owner's limits on-chain. Anything above the auto limit waits until the owner approves that exact payment from their wallet.
 
-> **Unaudited hackathon prototype.** Local sandbox only so far. Do not use with real funds.
+> **Unaudited hackathon prototype.** It runs on NEAR mainnet with small amounts of real USDC. Keep amounts small.
 
 ## Why not just give the agent a wallet
 
@@ -24,21 +24,38 @@ A wallet key can spend everything. A NEAR function-call key restricts which meth
 | Vault contract (`contracts/spact-vault`) | built, 66 unit tests (15 for the P1 cross-chain route) |
 | Real-chain tests on a NEAR sandbox node (`contracts/integration-tests`) | 19 passing: auto payment, approval flow, parallel split, failed transfer, private callback, agent bypass attempts, init front-run, pause/recovery, the agent's restricted key, expiry, wrong vault or policy, and the cross-chain route (deposit and payee bound apart, returned tokens never restore budget, expired quote, unlisted route) |
 | Shared TS package: request hash, exact amounts, contract JSON schemas, reason codes, RPC client (`packages/shared`) | built, 23 tests; hash matches Rust and independent Python vectors, direct and cross-chain |
-| Landing page, owner dashboard and approval page (`apps/web`) | built, 48 unit tests and 25 browser tests on a local chain, including tampered RPC answers, framing, the network switch and the cross-chain review page |
+| Landing page, owner dashboard and approval page (`apps/web`) | built, with tampered RPC answers, framing, the network switch and the cross-chain review page tested in a browser on a local chain |
+| Owner tools on the website: create a vault, fund it, rules, pause, agents, agent key, cross-chain page (`apps/web`, ADR-033) | built and tested in a browser on a local chain, every flow end to end; **not yet run with Meteor on mainnet** |
 | Hosted site | live at https://spactvault.xyz (Railway) and https://0xileri.github.io/SpactVault/ (GitHub Pages), both from main, reading the mainnet vault with a switch to the testnet vault |
 | Security Lab report and page (`packages/security-lab`, `?page=security`) | built: 17 of 18 attack cases pass on a local chain, T10 in unit tests only, none uncovered (263 tests in 11 suites, 2026-11-02) |
-| Agent MCP server for Claude Code / Codex (`apps/mcp`) | built, 24 unit tests and 11 tests over stdio on a local chain; run from Claude Code on testnet and **on mainnet with real USDC** (paid, held for approval, blocked) |
+| Agent MCP server for Claude Code / Codex (`apps/mcp`) | built, with direct and cross-chain tools; tested over stdio on a local chain; run from Claude Code on testnet and **on mainnet with real USDC** (paid, held for approval, blocked). The cross-chain tool is tested against a mock 1Click only |
 | Local demo with no wallet or testnet needed (`scripts/dev-sandbox.sh`) | works |
 | Testnet deploy script (`scripts/deploy-testnet.sh`) | ran on testnet on 2026-10-25: `vault.spact-ileri2.testnet` |
 | Signing with a real wallet | done with Meteor Wallet on testnet (25 TUSD) and on **mainnet** (2 USDC, 2026-11-03): the owner approved and paid the waiting request on the hosted site. Other wallets untested |
 | Telegram alert for the owner (`apps/notifier`) | built, 28 unit tests and 4 tests on a local chain against a mock Bot API; not yet tried with real Telegram |
-| NEAR Intents / 1Click cross-chain route (P1) | vault route, 1Click adapter (`packages/intents`, 14 tests), review page and Telegram alert built and tested on a local chain with a stand-in deposit account and a mock 1Click; **no live 1Click call, not on testnet or mainnet** (the deployed vaults run the earlier code). See DECISIONS ADR-032 |
+| NEAR Intents / 1Click cross-chain route (P1) | vault route, 1Click adapter (`packages/intents`), MCP tool, approval page check against 1Click's record, live status tracking and Telegram alert, all tested on a local chain with a stand-in deposit account and a mock 1Click; **no live 1Click call yet, not on testnet or mainnet** (the deployed vaults run the earlier code). See DECISIONS ADR-032, ADR-033 |
 
 Details: [docs/STATUS.md](docs/STATUS.md). Security mapping: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
 ## Let Claude Code or Codex pay
 
-`apps/mcp` is an MCP server with two tools, `request_payment` and `get_payment_status`. It signs with the agent's function-call key and refuses to start with a full-access key. `scripts/dev-sandbox.sh` prints the `claude mcp add` and `codex mcp add` commands for the local chain. Then ask the agent to pay `api.test.near` 5 TUSD (paid at once) or 20 TUSD (it gets an approval link and waits for you). Setup for testnet: [apps/mcp/README.md](apps/mcp/README.md). On testnet, Claude Code paid 5 TUSD at once, waited for the owner on 12 TUSD, and was blocked paying `evil.testnet` (docs/STATUS.md).
+`apps/mcp` is an MCP server with three tools: `request_payment`, `request_cross_chain_payment` (through 1Click, only with `ENABLE_1CLICK_LIVE=true`, always waits for the owner) and `get_payment_status`. It signs with the agent's function-call key and refuses to start with a full-access key. `scripts/dev-sandbox.sh` prints the `claude mcp add` and `codex mcp add` commands for the local chain. Then ask the agent to pay `api.test.near` 5 TUSD (paid at once) or 20 TUSD (it gets an approval link and waits for you). Setup for testnet: [apps/mcp/README.md](apps/mcp/README.md). On testnet, Claude Code paid 5 TUSD at once, waited for the owner on 12 TUSD, and was blocked paying `evil.testnet` (docs/STATUS.md).
+
+## Run your own vault from the website
+
+Everything the owner does happens on https://spactvault.xyz with a browser wallet such as Meteor. No terminal. The site shows what each step does before your wallet asks you to sign, and on mainnet the Sign button stays off until you tick that you checked it (DECISIONS ADR-033). The only part that is not in the browser is your agent, which runs the MCP server on its own machine. Mainnet uses real funds: keep amounts small.
+
+1. **Connect.** Open https://spactvault.xyz, pick **Mainnet** in the top bar, open **Dashboard**, and click **Connect NEAR wallet**. You see your account (for example `0xileri.near`) in the page header.
+2. **Create a vault.** Open the **New vault** tab. Keep the name `vault2` (it becomes `vault2.<your account>`), `agent2.<your account>` as the agent, native USDC as the token, and the limits 1 / 3 / 5. Click **Review**. You see **Step 1 of 2: create vault2.…**, with *Create the account*, *Send 3.2 NEAR* and *a temporary full-access key, held only by this tab*. Tick the mainnet box, click **Sign in your wallet**, and confirm in Meteor. Then you see **Step 2 of 2** with the code hash `5HwAUrjKbx5qc7NNyka4ndkAsXUdA9CsQ1ya66zzNNve`. Click **Install and lock**; this tab signs it, so there is no wallet prompt. You see **Running and locked**, with a check for the matching code hash and **No access keys**. Keep the tab open until then.
+3. **Add money.** Click **Next: add money and give your agent a key**. Under **Add money**, click **Add tokens**, enter `3`, and click **Review**. You see a `storage_deposit` (once) and an `ft_transfer` to the vault. Sign. You see **Confirmed on chain** and **3 USDC in the vault**.
+4. **Give your agent a key.** Under **Give your agent a key**, click **Set up an agent key**, keep `agent2`, and click **Make the key**. Click **Download agent2.….json**. Then review and sign the transaction that creates `agent2.<your account>` with a key that can only call `request_direct_payment`, `request_cross_chain_payment` and `execute_request` on the vault. You see **agent2.… is ready** and the MCP settings for your agent. Put the file on the agent's machine, readable only by that user (`chmod 600`), and start the MCP server there with those settings ([apps/mcp/README.md](apps/mcp/README.md)).
+5. **Allow a cross-chain destination.** Open the **Cross-chain** tab. Pick **USDC on Solana** (or Base), paste the recipient's address, enter `1`, and click **Get a price**. You see what the vault sends, what arrives, the minimum, and the fee. Click **Allow this recipient in your rules**, review the one-line change, and sign.
+6. **Let the agent pay, and approve.** Ask your agent to pay that address 1 USDC. It calls `request_cross_chain_payment`, which files a real 1Click quote with the vault, and you get an approval link (and a Telegram alert, if set up). Open it. You see the deposit address and the final recipient apart, **1Click confirms this deposit address**, and **Approve and pay**. If 1Click's record does not match, Approve stays off. Approve in Meteor.
+7. **Follow it.** The same page then shows **1Click:** with its status, checked every 5 seconds, and links to the transactions on NEAR and on the destination chain once 1Click reports them.
+
+Rules, pause and agents are under **Manage**: change the limits or recipients (the review lists each change in words), **Pause all payments**, and add or remove agents. Each is one wallet signature.
+
+What has not been tried yet: these flows with Meteor on mainnet (the local tests use a stand-in signer), and the live 1Click API (docs/STATUS.md). Wallet limits and their browser-only workarounds are in DECISIONS ADR-033.
 
 ## Security Lab
 
@@ -78,6 +95,7 @@ After every job passes on main, CI publishes the site to GitHub Pages at https:/
 Repository settings this needs: Settings → Pages → Source **GitHub Actions** (once), and repository variables under Settings → Secrets and variables → Actions → Variables:
 - `VITE_NEAR_NETWORK`, `VITE_NEAR_RPC_URL` and `VITE_VAULT_ID` for the main network, now `mainnet`, `https://rpc.mainnet.fastnear.com` and `vault.0xileri.near`. Without them the build defaults to testnet and `https://test.rpc.fastnear.com`.
 - Optional, for the network switch: `VITE_TESTNET_VAULT_ID`, now `vault.spact-ileri2.testnet` (with `VITE_TESTNET_RPC_URL`, default `https://test.rpc.fastnear.com`). On a testnet-first site, use `VITE_MAINNET_VAULT_ID` and `VITE_MAINNET_RPC_URL` instead.
+- Optional, for more than one vault on a network: `VITE_EXTRA_VAULTS` (comma-separated, each `account` or `account=label`), plus `VITE_VAULT_LABEL` for the default vault, e.g. `VITE_VAULT_ID=vault2.0xileri.near`, `VITE_VAULT_LABEL=P1 vault`, `VITE_EXTRA_VAULTS=vault.0xileri.near=P0 vault`. A picker in the page header then moves between them (ADR-033). A vault the site does not list still opens if it runs a SpactVault build the site knows and has no access keys.
 
 After changing them, re-run the workflow on main. These are public values, not secrets.
 
@@ -89,6 +107,7 @@ The root `Dockerfile` builds the site and serves it with Caddy, which sends secu
 
 1. At https://railway.com create a project from the GitHub repo. If Railway offers one service per package, keep a single service at the repository root. Its build log says `Using detected Dockerfile!`.
 2. Under the service's **Variables**, set the main network: here `VITE_NEAR_NETWORK=mainnet`, `VITE_NEAR_RPC_URL=https://rpc.mainnet.fastnear.com` and `VITE_VAULT_ID=vault.0xileri.near`. For the network switch, add `VITE_TESTNET_VAULT_ID=vault.spact-ileri2.testnet`. The other settings have defaults in the `Dockerfile`: testnet, `https://test.rpc.fastnear.com`, the second network's RPC, the Security Lab report from the GitHub Pages site, and this repository's link.
+   The same `VITE_VAULT_LABEL` / `VITE_EXTRA_VAULTS` work here. 1Click needs nothing: the image proxies it at `/1click` and the build points there by default (`VITE_ONECLICK_URL`).
 3. Under **Settings → Networking**, generate a domain or add your own; this project uses `spactvault.xyz`. The share card uses the generated domain automatically (`RAILWAY_PUBLIC_DOMAIN`). For a custom domain, also set `VITE_SITE_URL=https://<your domain>`.
 4. Under **Settings**, turn on **Wait for CI**, so Railway deploys a commit only after GitHub Actions passed on it.
 5. When it is up, check it: `scripts/check-web-image.sh https://<domain> https://<domain>`.
@@ -120,34 +139,9 @@ To watch the attacks fail, run `pnpm e2e`. It drives Chromium against the same l
 - **Recipient and hash both forged:** the page shows the attacker's terms with a passing check, the owner approves, and the vault refuses with `HASH_MISMATCH`. The test then reads the chain directly: nothing moved and the request still awaits approval.
 - **Budget inflated:** the dashboard sees that the numbers don't add up and shows **Today's spending numbers do not add up** instead of them.
 
-## Deploy to testnet
+## Deploy from the command line (developers)
 
-`scripts/deploy-testnet.sh` uses only commands from the NEAR docs. It ran on testnet on 2026-10-25 (from WSL Ubuntu on Windows) and is rehearsed end to end against a local node (`scripts/rehearse-deploy-sandbox.sh`). It needs bash, so on Windows run it in WSL.
-
-1. Install rustup, a C toolchain (`sudo apt install build-essential` on Ubuntu), Node 22.12+ and near-cli-rs: `npm install -g near-cli-rs@latest` (other options: https://docs.near.org/tools/cli#installation).
-2. Create the **owner** account in a wallet. Pick a `.testnet` account; this is the account that approves payments. Meteor Wallet works (https://wallet.meteorwallet.app, switched to testnet). It needs a little testnet NEAR for gas: `near tokens <name>.testnet send-near <owner>.testnet 1NEAR network-config testnet sign-with-legacy-keychain send` after step 3.
-3. Create a **deployer** account. Its key lands in `~/.near-credentials`:
-   `near account create-account sponsor-by-faucet-service <name>.testnet autogenerate-new-keypair save-to-legacy-keychain network-config testnet create`
-   The script spends about 6.6 testnet NEAR. Contract code alone locks about 4.3 NEAR, at roughly 1 NEAR per 100 KB. Top up from https://docs.near.org/getting-started/faucet if needed.
-4. Run `scripts/deploy-testnet.sh <name>.testnet <owner>.testnet`. You see `protocol version N` (it refuses below 84). It stops before building or spending anything if the owner account does not exist, or if this deployer was used before. Then you see one confirmation per step. It ends with the vault id, its code hash, the agent's key files, and three `VITE_` lines. The agent's two demo requests are signed with a function-call key that can call only `request_direct_payment` and `execute_request` on the vault. That key goes in `~/.near-credentials/spact/agent.<name>.testnet.json`. The agent account's full-access key stays in your keychain; don't give it to the agent.
-5. Set the repository variable `VITE_VAULT_ID` (see "Hosted site") and re-run the workflow, or put those lines in `apps/web/.env.local` and run `pnpm --filter @spact/web dev`. Open `?request=demo-approve-1` on the site (locally `http://localhost:5173/?request=demo-approve-1`) and connect the owner wallet within 24 hours, before the request expires. Click **Approve and pay** and confirm in the wallet. You see **Confirmed on chain: approved and paid**, with a link to testnet.nearblocks.io.
-
-## Deploy to mainnet
-
-`scripts/deploy-mainnet.sh` deploys a vault that spends real USDC within small fixed limits, then locks its code (DECISIONS ADR-028). It is rehearsed end to end against a local node with a stand-in USDC (`scripts/rehearse-mainnet-sandbox.sh`), and the owner ran it on 2026-11-01: the live vault is `vault.0xileri.near` (docs/STATUS.md, "Mainnet deployment"). It spends real funds, so you run it yourself, on your own machine, and it waits for you to type `deploy to mainnet`.
-
-1. Do steps 1 and 2 of "Deploy to testnet" (tools, an owner wallet), with a mainnet owner account such as `alice.near`.
-2. Create a named mainnet **deployer** account in a wallet, e.g. `yourname.near`. Fund it with about 3.5 NEAR plus 5 USDC. It must be native USDC, not the bridged USDC.e. Then import it into near-cli on your machine; near-cli asks for the seed phrase itself:
-   `near account import-account using-seed-phrase network-config mainnet`
-3. Run `scripts/deploy-mainnet.sh <deployer>.near <owner>.near`. Before spending anything, it checks:
-   - the chain and protocol version;
-   - the accounts;
-   - that the token says USDC with 6 decimals;
-   - your NEAR and USDC balances.
-
-   Then it prints what it will spend and the most you can lose. Compare the token id it prints with Circle's list (https://developers.circle.com/stablecoins/usdc-contract-addresses) before you type `deploy to mainnet`.
-4. It creates `vault.`, `agent.` and `api.<deployer>`, deploys the vault with these limits: paid at once up to 1 USDC, waits for the owner up to 3, 5 a day, only to `api.<deployer>`. It gives the agent its restricted key, registers USDC storage and moves the 5 USDC float into the vault. Then it deletes the vault's full-access key and checks that none is left. From then on nobody can change the vault's code, and only the owner can take the USDC out (`owner_withdraw`).
-5. Point the sites at it with `VITE_NEAR_NETWORK=mainnet`, `VITE_NEAR_RPC_URL` and `VITE_VAULT_ID`: as Railway service variables, and as repository variables for GitHub Pages. The MCP server needs `SPACT_NETWORK=mainnet` and `ENABLE_MAINNET_TRANSFERS=true`.
+The website is the owner's way to create a vault (above). Before it existed, the testnet and mainnet vaults were deployed with `scripts/deploy-testnet.sh` (2026-10-25) and `scripts/deploy-mainnet.sh` (2026-11-01, `vault.0xileri.near`). Both still work, are rehearsed against a local node (`scripts/rehearse-deploy-sandbox.sh`, `scripts/rehearse-mainnet-sandbox.sh`), and explain themselves in their headers. They need bash, rustup, Node 22.12+ and near-cli-rs, and the mainnet one waits for you to type `deploy to mainnet`. They give the agent the older two-method key, which cannot file cross-chain requests.
 
 ## Run the tests
 

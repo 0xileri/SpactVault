@@ -111,11 +111,20 @@ function NetworkSwitch({ current, networks }: { current: NetworkId; networks: Ne
   );
 }
 
-/** The vaults this build lists on the current network, to move between them. Shown only when there are several. */
+function vaultsOn(configs: SiteConfig[], network: NetworkId): AppConfig[] {
+  return configs.filter((c): c is AppConfig => c.network === network && c.vaultId !== null);
+}
+
+/** A picker is worth showing when this network lists several vaults, or the page shows one it does not list. */
+function needsPicker(configs: SiteConfig[], current: AppConfig): boolean {
+  const here = vaultsOn(configs, current.network);
+  return here.length > 1 || !here.some((c) => c.vaultId === current.vaultId);
+}
+
+/** The vaults this build lists on the current network, to move between them. */
 function VaultPicker({ configs, current }: { configs: SiteConfig[]; current: AppConfig }) {
-  const here = configs.filter((c): c is AppConfig => c.network === current.network && c.vaultId !== null);
+  const here = vaultsOn(configs, current.network);
   const listed = here.some((c) => c.vaultId === current.vaultId);
-  if (here.length < 2 && listed) return null;
   const go = (vaultId: string) => {
     const params = new URLSearchParams(window.location.search);
     params.delete("request");
@@ -216,7 +225,11 @@ export function App({ config: chosen, configs = [chosen] }: { config: SiteConfig
   const unlistedId = chosen.vaultId !== null && linkVault !== null && linkVault !== chosen.vaultId ? linkVault : null;
   const unlisted = useUnlistedVault(chosen, unlistedId);
   // the vault this page shows: the chosen config, or an unlisted vault that passed the check above
-  const config: SiteConfig = unlisted?.state === "ok" && unlistedId ? { ...chosen, vaultId: unlistedId, vaultLabel: null } : chosen;
+  const unlistedOk = unlisted?.state === "ok";
+  const config: SiteConfig = useMemo(
+    () => (unlistedOk && unlistedId ? { ...chosen, vaultId: unlistedId, vaultLabel: null } : chosen),
+    [chosen, unlistedOk, unlistedId],
+  );
   const link = useMemo(() => {
     const place = placeOf(configs, config.network, config.vaultId);
     return (href: string) => placeLink(href, place);
@@ -353,11 +366,14 @@ export function App({ config: chosen, configs = [chosen] }: { config: SiteConfig
                     ) : (
                       <>
                         <Badge tone={badge.tone}>{badge.label}</Badge>
-                        <span className="inline-flex flex-wrap items-center gap-1">
-                          vault <Mono>{config.vaultId}</Mono>
-                          {config.vaultLabel ? <span>({config.vaultLabel})</span> : null}
-                        </span>
-                        {foreignVault ? null : <VaultPicker configs={configs} current={config} />}
+                        {!foreignVault && needsPicker(configs, config) ? (
+                          <VaultPicker configs={configs} current={config} />
+                        ) : (
+                          <span className="inline-flex flex-wrap items-center gap-1">
+                            vault <Mono>{config.vaultId}</Mono>
+                            {config.vaultLabel ? <span>({config.vaultLabel})</span> : null}
+                          </span>
+                        )}
                         {unlisted?.state === "ok" ? (
                           <span data-testid="unlisted-vault" title={`Code hash ${unlisted.build.codeHash}`}>
                             <Badge tone="info">not listed by this site · verified {unlisted.build.id.toUpperCase()} code, no keys</Badge>

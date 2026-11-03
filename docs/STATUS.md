@@ -33,9 +33,9 @@ DECISIONS ADR-032. **Local tested only:** a sandbox vault, a sandbox account sta
 
 | AGENTS.md P1 item | State |
 |---|---|
-| 10. 1Click dry quote; token discovery; request parameters validated; quote terms captured and hashed | `packages/intents`: quote request builder (EXACT_INPUT, ORIGIN_CHAIN, refund to the vault), token-list route lookup, quote checks, canonical quote hash; mock-tested. **No live dry quote** (API host unreachable here). The web UI does not request quotes |
-| 11. Human-approved NEAR-origin payment through 1Click, live statuses, refund state | vault `request_cross_chain_payment` (always owner-approved, deposit account and destination bound into the approved hash, quote deadline enforced, budget never re-credited), approval page and Telegram alert showing deposit address and final recipient apart, status reconciliation (`REFUND_UNVERIFIED`); **sandbox only, no live payment** (needs owner sign-off, a verified deposit method and a redeployed vault) |
-| 12. MCP bridge with a restricted spend-request capability | done for direct payments (ADR-018); the agent key and MCP tools do not include the cross-chain method yet |
+| 10. 1Click dry quote; token discovery; request parameters validated; quote terms captured and hashed | `packages/intents`: quote request builder (EXACT_INPUT, ORIGIN_CHAIN, refund to the vault), token-list route lookup, quote checks, canonical quote hash; mock-tested. The website's cross-chain page asks for a dry quote through the site's `/1click` proxy (ADR-033). **No live dry quote yet** (API host unreachable here) |
+| 11. Human-approved NEAR-origin payment through 1Click, live statuses, refund state | vault `request_cross_chain_payment` (always owner-approved, deposit account and destination bound into the approved hash, quote deadline enforced, budget never re-credited), approval page and Telegram alert showing deposit address and final recipient apart, status reconciliation (`REFUND_UNVERIFIED`). The approval page now refuses to approve until 1Click's record of the deposit address matches, and follows 1Click's status with explorer links for both chains (ADR-033); **sandbox and mock 1Click only, no live payment yet** |
+| 12. MCP bridge with a restricted spend-request capability | done: `request_payment` (ADR-018) and `request_cross_chain_payment` (ADR-033, live only with `ENABLE_1CLICK_LIVE=true`); the website makes agent keys for the three agent methods |
 | 13. Approval expiry, idempotent retries, event reconciliation, quote mutation tests | quote expiry (QUOTE_EXPIRED) and quote mutation tests (T07, T14) added; event reconciliation and retries unchanged |
 
 - **Vault:**
@@ -47,10 +47,29 @@ DECISIONS ADR-032. **Local tested only:** a sandbox vault, a sandbox account sta
   - T14: the review page shows the deposit address and the final payee apart; a swapped deposit address or payee fails the hash check or the vault (browser, sandbox and unit tests);
   - both are mapped in `packages/security-lab/src/catalog.ts`, and `scripts/security-report.sh` runs the new `vitest:intents` suite.
 - **Unverified:**
-  - the NEAR-origin deposit mechanics (plain `ft_transfer`, storage registration of the deposit account);
-  - the live API's answers;
+  - the NEAR-origin deposit mechanics (plain `ft_transfer`; storage registration of the deposit account, which the approval page now checks and offers);
+  - the live API's answers, including `GET /v0/status` for a deposit address before its deposit;
   - the quote signature's format.
   - INTEGRATIONS.md has the sources.
+
+## Owner flows on the website (2026-11-03)
+
+DECISIONS ADR-033. Everything the owner does now runs on the website with a browser wallet, each step shown on a review screen first, with a confirmation box on mainnet. **Tested on a local chain only**, with the sandbox dev signer standing in for the wallet; not yet run with Meteor on testnet or mainnet, and no 1Click call made.
+
+| Flow | Where | State |
+|---|---|---|
+| Create a vault: wallet creates `name.<owner>` with a temporary key; the tab installs the committed P1 wasm, calls `new` and deletes the key in one transaction; the page checks code hash, keys and settings | `?page=new-vault` | browser test on sandbox: code hash `5HwAUrjK…` on chain, no keys, owner and agents as asked, the temporary secret never sent |
+| Fund: `storage_deposit` (if needed) + `ft_transfer`; top up NEAR | `?page=manage` | browser test: 10 TUSD in, no `ft_transfer_call` |
+| Rules: limits, NEAR recipients, cross-chain routes, with a plain-language diff and the vault's own checks before signing | `?page=manage` | browser test: change signed and on chain (version 2); a policy the vault would refuse cannot be signed |
+| Pause and unpause | `?page=manage` | browser test |
+| Add and remove agents | `?page=manage` | browser test |
+| Agent key: made in the browser, downloaded once, then the wallet creates the agent account with only a function-call key for three methods | `?page=manage` | browser test: one key on chain with exactly those methods and allowance, the secret never sent, and the agent pays with that key |
+| Cross-chain: dry quote, allow a recipient, list requests | `?page=crosschain` | browser test with the mock 1Click |
+| Approval of a cross-chain request: checks the deposit address against 1Click, offers to register it with the token, then tracks 1Click's status | `?request=<id>` | browser tests with the mock 1Click: match, mismatch (T14), 1Click down, unregistered deposit, RPC and 1Click lying together (the vault still refuses), tracking with a Solana link built by the page |
+| Several vaults per network, and unlisted vaults that run a known build with no keys | header picker, `?vault=` | unit tests and a browser test |
+| MCP `request_cross_chain_payment` and 1Click status in `get_payment_status` | `apps/mcp` | unit tests with `MockOneClick` |
+
+**Wallet limits** (ADR-033): the wasm never goes through the wallet; `new` cannot be signed by a wallet, so the tab's temporary key does it; a wallet may warn about the full-access `AddKey` in step 1 (the review screen explains it); every owner change is a separate wallet confirmation; key-file downloads may not work in a wallet's in-app browser. Unverified: that the mainnet RPC accepts the ~370 kB install transaction, and that Meteor signs each of these transaction shapes.
 
 ## Mainnet deployment (2026-11-01)
 
@@ -250,11 +269,16 @@ Agent key (2026-10-24): the agent now signs with a function-call key that reache
 - The vault wasm is not reproducible across build machines, so the deployed code hash cannot yet be checked bit for bit against the source.
 - No Content-Security-Policy, and framing is refused by script rather than a `frame-ancestors` header, which GitHub Pages cannot send (ADR-023).
 - P1: after the deposit, 1Click is trusted; the vault cannot verify delivery or a refund (ADR-032, THREAT_MODEL).
-- P1: the agent files the quote's deposit address. Nothing yet checks it against 1Click's own record from the approval page (the adapter has `depositMismatches`), so a malicious agent's made-up deposit address relies on the owner noticing.
+- P1: the agent files the quote's deposit address. The approval page now checks it against 1Click's own record (ADR-033), but that check is only as good as 1Click's answer and the site's proxy.
+- Website owner flows: tested on a local chain only; Meteor has not signed a vault creation, a funding, a rules change or an agent key yet. Between the two vault-creation transactions a temporary key sits in the tab, and the site has no Content-Security-Policy (THREAT_MODEL).
 - P1: NEAR-origin 1Click deposit mechanics are unverified (INTEGRATIONS.md).
 
 ## Next smallest task
 
-Record the testnet approval transaction hashes for `demo-approve-1` and `agent-approve-1` here, if the owner has them.
+The live 1Click check (blocked here: the build environment cannot reach `1click.chaindefuser.com`): one token list, one dry quote for about 1 native USDC to USDC on Solana and on Base, and one status read, parsed with `packages/intents` and recorded as fixtures (INTEGRATIONS.md).
+
+Then the mainnet run, on https://spactvault.xyz with Meteor, each step confirmed by the owner (README "Run your own vault from the website"): create `vault2.0xileri.near`, fund it with about 3 USDC, create `agent2.0xileri.near` with its key, allow one recipient, let the agent request 1 USDC cross-chain through the MCP server, approve it, and record every transaction hash, the deposit address and 1Click's final status here. Only after the owner confirms: point the site's mainnet config at vault2 with `vault.0xileri.near` listed as the P0 vault (`VITE_VAULT_ID=vault2.0xileri.near`, `VITE_EXTRA_VAULTS=vault.0xileri.near=P0 vault`).
+
+Still open from before: the testnet approval transaction hashes for `demo-approve-1` and `agent-approve-1`, if the owner has them.
 
 Then, on the owner's machine: with a bot from @BotFather, run the notifier (apps/notifier/README.md) against the testnet vault and check that the alert arrives on the phone.

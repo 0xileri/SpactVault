@@ -109,6 +109,8 @@ export async function deployAndLock(p: PendingDeploy, wasm: Uint8Array): Promise
       near.actions.deleteKey(near.PublicKey.fromString(p.key.publicKey)),
     ],
     throwOnFailure: false,
+    // the checks that follow read final state, so wait until the install is final too
+    waitUntil: "FINAL",
   });
   return outcomeOf(result);
 }
@@ -121,6 +123,7 @@ export async function cancelDeploy(p: PendingDeploy): Promise<SentTx> {
     receiverId: p.vaultId,
     actions: [near.actions.deleteAccount(p.owner)],
     throwOnFailure: false,
+    waitUntil: "FINAL",
   });
   return outcomeOf(result);
 }
@@ -145,6 +148,20 @@ export async function inspectVault(rpcUrl: string, vaultId: string): Promise<Vau
     config = parsed.success ? parsed.data : null;
   }
   return { account, keys, build, config };
+}
+
+/**
+ * inspectVault until the account shows `codeHash` and no keys, or `timeoutMs` passes: RPC nodes can lag a
+ * block or two behind the transaction that just finished. Returns the last reading either way.
+ */
+export async function inspectUntilLocked(rpcUrl: string, vaultId: string, codeHash: string, timeoutMs = 20_000): Promise<VaultInspection> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const found = await inspectVault(rpcUrl, vaultId);
+    const settled = found.account?.codeHash === codeHash && found.keys.length === 0 && found.config !== null;
+    if (settled || Date.now() >= deadline) return found;
+    await new Promise((r) => setTimeout(r, 1_000));
+  }
 }
 
 export interface LockCheck {

@@ -22,6 +22,7 @@ import {
   clearPending,
   deployAndLock,
   generateKey,
+  inspectUntilLocked,
   inspectVault,
   loadPending,
   savePending,
@@ -99,6 +100,7 @@ async function buildInit(config: AppConfig, owner: string, form: Form): Promise<
       throw new Error(`${what}: enter an amount of ${meta.symbol} with at most ${meta.decimals} decimals.`);
     }
   };
+  if (!/^\d+(\.\d+)?$/.test(form.ttlHours.trim())) throw new Error("How long a request may wait: enter hours, e.g. 24.");
   const policy: Policy = {
     tokens: [{ token, auto_limit: units(form.auto, "Paid instantly up to"), hard_tx_limit: units(form.cap, "Per-payment cap"), daily_limit: units(form.daily, "Daily limit") }],
     recipients: splitList(form.recipients),
@@ -107,7 +109,6 @@ async function buildInit(config: AppConfig, owner: string, form: Form): Promise<
     approval_ttl_sec: Math.round(Number(form.ttlHours) * 3600),
     cross_chain: [],
   };
-  if (!/^\d+(\.\d+)?$/.test(form.ttlHours.trim())) throw new Error("How long a request may wait: enter hours, e.g. 24.");
   const problems = policyProblems(policySchema.parse(policy), vaultId);
   if (problems.length > 0) throw new Error(problems.join(" "));
   const agents = splitList(form.agents);
@@ -239,7 +240,7 @@ export function NewVault({ config, signer, wallet }: { config: AppConfig; signer
       const wasm = await fetchBuild(LATEST_BUILD);
       const sent = await deployAndLock(pending, wasm);
       if (sent.failure) throw new Error(`The vault refused to start: ${sent.failure}`);
-      const found = await inspectVault(config.rpcUrl, pending.vaultId);
+      const found = await inspectUntilLocked(config.rpcUrl, pending.vaultId, LATEST_BUILD.codeHash);
       const check = checkDeployed(found, { build: LATEST_BUILD, init: pending.init, vaultId: pending.vaultId });
       if (found.keys.length === 0) clearPending();
       setStep({ kind: "done", pending, check, installTx: sent.txHash });
