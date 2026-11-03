@@ -17,6 +17,16 @@ ARG VITE_TESTNET_VAULT_ID=
 ARG VITE_TESTNET_RPC_URL=https://test.rpc.fastnear.com
 ARG VITE_MAINNET_VAULT_ID=
 ARG VITE_MAINNET_RPC_URL=https://rpc.mainnet.fastnear.com
+# Optional: more vaults per network with labels for the vault picker (ADR-033), e.g.
+# VITE_EXTRA_VAULTS="vault.0xileri.near=P0 vault"
+ARG VITE_VAULT_LABEL=
+ARG VITE_EXTRA_VAULTS=
+ARG VITE_TESTNET_VAULT_LABEL=
+ARG VITE_TESTNET_EXTRA_VAULTS=
+ARG VITE_MAINNET_VAULT_LABEL=
+ARG VITE_MAINNET_EXTRA_VAULTS=
+# 1Click through this image's own Caddy proxy (Caddyfile /1click/*); empty turns the 1Click features off
+ARG VITE_ONECLICK_URL=/1click
 # The CI-built report published with the GitHub Pages site, read by the browser at runtime.
 ARG VITE_SECURITY_REPORT_URL=https://0xileri.github.io/SpactVault/security-report.json
 ARG VITE_REPO_URL=https://github.com/0xileri/SpactVault

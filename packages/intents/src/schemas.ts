@@ -90,11 +90,19 @@ export const quoteResponseSchema = z
         deadline: isoTime.optional(),
         timeWhenInactive: isoTime.optional(),
         timeEstimate: z.number().nonnegative().optional(),
+        // display values 1Click adds; never used for any check
+        amountInFormatted: z.string().max(64).optional(),
+        amountOutFormatted: z.string().max(64).optional(),
+        amountInUsd: z.string().max(64).optional(),
+        amountOutUsd: z.string().max(64).optional(),
       })
       .loose(),
   })
   .loose();
 export type QuoteResponse = z.infer<typeof quoteResponseSchema>;
+
+/** A transaction 1Click reports. Its `explorerUrl` is never linked: pages build their own links from the hash. */
+const txDetailsSchema = z.object({ hash: z.string().min(1).max(128), explorerUrl: z.string().max(512).optional() }).loose();
 
 /** `GET /v0/status?depositAddress=...` response. Every value in it is 1Click's report, not chain state. */
 export const statusResponseSchema = z
@@ -105,6 +113,8 @@ export const statusResponseSchema = z
     swapDetails: z
       .object({
         nearTxHashes: z.array(z.string().max(128)).max(64).optional(),
+        originChainTxHashes: z.array(txDetailsSchema).max(64).optional(),
+        destinationChainTxHashes: z.array(txDetailsSchema).max(64).optional(),
         refundedAmount: uintString.optional(),
         depositedAmount: uintString.optional(),
         amountOut: uintString.optional(),

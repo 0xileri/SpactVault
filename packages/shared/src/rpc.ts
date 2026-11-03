@@ -106,6 +106,66 @@ export async function viewAccessKey(
   return parseAccessKeyPermission(result.permission);
 }
 
+/** What view_account reports about an account. Amounts are yoctoNEAR strings. */
+export interface AccountView {
+  amount: string;
+  locked: string;
+  /** base58 sha256 of the deployed wasm; all ones ("1111…") when no contract is deployed. */
+  codeHash: string;
+  storageUsage: number;
+}
+
+/** The code hash NEAR reports for an account with no contract. */
+export const NO_CODE_HASH = "11111111111111111111111111111111";
+
+const YOCTO_RE = /^(0|[1-9]\d*)$/;
+const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+function isMissingAccount(e: unknown): boolean {
+  return e instanceof RpcError && (e.causeName === "UNKNOWN_ACCOUNT" || /does not exist/i.test(e.message));
+}
+
+/** Balance, code hash and storage of an account, or null when the account does not exist. */
+export async function viewAccount(rpcUrl: string, accountId: string): Promise<AccountView | null> {
+  let result: unknown;
+  try {
+    result = await call(rpcUrl, "query", { request_type: "view_account", finality: "final", account_id: accountId });
+  } catch (e) {
+    if (isMissingAccount(e)) return null;
+    throw e;
+  }
+  if (!isRecord(result)) throw new RpcError("view_account: unexpected RPC response shape");
+  const { amount, locked, code_hash: codeHash, storage_usage: storageUsage } = result;
+  if (typeof amount !== "string" || !YOCTO_RE.test(amount) || typeof locked !== "string" || !YOCTO_RE.test(locked)) {
+    throw new RpcError("view_account: amount is not a yoctoNEAR string");
+  }
+  if (typeof codeHash !== "string" || !BASE58_RE.test(codeHash)) throw new RpcError("view_account: code_hash is not base58");
+  if (typeof storageUsage !== "number" || !Number.isSafeInteger(storageUsage) || storageUsage < 0) {
+    throw new RpcError("view_account: storage_usage is not a count");
+  }
+  return { amount, locked, codeHash, storageUsage };
+}
+
+export interface AccessKeyEntry {
+  publicKey: string;
+  permission: AccessKeyPermission;
+}
+
+/** Every access key of an account. An account with none is locked: nobody can sign for it. */
+export async function viewAccessKeyList(rpcUrl: string, accountId: string): Promise<AccessKeyEntry[]> {
+  const result = await call(rpcUrl, "query", { request_type: "view_access_key_list", finality: "final", account_id: accountId });
+  const keys = isRecord(result) ? result.keys : undefined;
+  if (!Array.isArray(keys)) throw new RpcError("view_access_key_list: unexpected RPC response shape");
+  return keys.map((k: unknown) => {
+    const entry = isRecord(k) ? k : {};
+    const accessKey = isRecord(entry.access_key) ? entry.access_key : {};
+    if (typeof entry.public_key !== "string" || !/^(ed25519|secp256k1):[1-9A-HJ-NP-Za-km-z]+$/.test(entry.public_key)) {
+      throw new RpcError("view_access_key_list: a key has no public_key");
+    }
+    return { publicKey: entry.public_key, permission: parseAccessKeyPermission(accessKey.permission) };
+  });
+}
+
 /** Timestamp of the latest final block, in nanoseconds. Used instead of the local clock. */
 export async function finalBlockTimestampNs(rpcUrl: string): Promise<bigint> {
   const result = await call(rpcUrl, "block", { finality: "final" });

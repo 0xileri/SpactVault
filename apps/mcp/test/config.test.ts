@@ -52,3 +52,23 @@ describe("links", () => {
     expect(explorerTxLink({ explorerTxUrl: null }, hash)).toBeNull();
   });
 });
+
+describe("1Click settings", () => {
+  const env = {
+    SPACT_NETWORK: "testnet",
+    SPACT_RPC_URL: "https://rpc.example",
+    SPACT_VAULT_ID: "vault.demo.testnet",
+    SPACT_AGENT_ID: "agent.demo.testnet",
+    SPACT_AGENT_KEY_FILE: "/tmp/agent.json",
+  };
+
+  it("keeps cross-chain payments off unless ENABLE_1CLICK_LIVE is true, and https only", () => {
+    expect(parseConfig(env).oneClick).toBeNull();
+    expect(parseConfig({ ...env, ENABLE_1CLICK_LIVE: "1" }).oneClick).toBeNull();
+    expect(parseConfig({ ...env, ENABLE_1CLICK_LIVE: "true" }).oneClick).toEqual({ baseUrl: "https://1click.chaindefuser.com", jwt: null });
+    expect(parseConfig({ ...env, ENABLE_1CLICK_LIVE: "true", ONE_CLICK_JWT: "secret" }).oneClick?.jwt).toBe("secret");
+    expect(() => parseConfig({ ...env, ENABLE_1CLICK_LIVE: "true", ONE_CLICK_BASE_URL: "http://1click.example" })).toThrow(/https/);
+    expect(parseConfig({ ...env, SPACT_QUOTE_DIR: "/var/spact/quotes" }).quoteDir).toBe("/var/spact/quotes");
+  });
+});
+

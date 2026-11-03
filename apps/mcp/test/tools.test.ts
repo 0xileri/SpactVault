@@ -1,5 +1,6 @@
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
-import type { PaymentRequest } from "@spact/shared";
+import { MockOneClick, type QuoteRequest } from "@spact/intents";
+import type { Policy, PaymentRequest } from "@spact/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createSpactServer } from "../src/tools.js";
@@ -45,6 +46,37 @@ function stored(overrides: Partial<PaymentRequest> = {}): PaymentRequest {
   };
 }
 
+const SOL_USDC = "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near";
+const PAYEE = "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV";
+const DEPOSIT = "9f3c1b2a4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8";
+const NOW = new Date("2026-11-03T12:00:00.000Z");
+const POLICY: Policy = {
+  tokens: [{ token: args.token, auto_limit: "1000000", hard_tx_limit: "3000000", daily_limit: "5000000" }],
+  recipients: [args.recipient],
+  max_open_approvals: 3,
+  max_requests_per_day: 20,
+  approval_ttl_sec: 86400,
+  cross_chain: [{ token: args.token, destination_chain: "sol", destination_asset: SOL_USDC, recipients: [PAYEE] }],
+};
+
+/** MockOneClick answering like an honest 1Click; `tweak` lets a test make the quote lie. */
+function mockOneClick(tweak: (q: Record<string, unknown>) => Record<string, unknown> = (q) => q) {
+  return new MockOneClick({
+    tokens: [
+      { assetId: `nep141:${args.token}`, decimals: 6, blockchain: "near", symbol: "TUSD" },
+      { assetId: SOL_USDC, decimals: 6, blockchain: "sol", symbol: "USDC" },
+    ],
+    quote: (request: QuoteRequest) =>
+      tweak({
+        timestamp: NOW.toISOString(),
+        signature: "ed25519:mock",
+        quoteRequest: request,
+        quote: { depositAddress: DEPOSIT, amountIn: request.amount, amountOut: "990000", minAmountOut: "980000", deadline: request.deadline, timeEstimate: 20 },
+      }),
+    status: {},
+  });
+}
+
 function fakeVault(overrides: Partial<VaultClient> = {}) {
   return {
     preflight: vi.fn(async () => {}),
@@ -55,6 +87,14 @@ function fakeVault(overrides: Partial<VaultClient> = {}) {
         txHash: TX,
       }),
     ),
+    requestCrossChain: vi.fn(
+      async (): Promise<SubmitResult> => ({
+        kind: "outcome",
+        outcome: { request_id: "xc-1", status: "AWAITING_APPROVAL", reason_code: "REQUIRES_OWNER_APPROVAL", request_hash: HASH },
+        txHash: TX,
+      }),
+    ),
+    getPolicy: vi.fn(async (): Promise<Policy> => POLICY),
     getRequest: vi.fn(async (): Promise<PaymentRequest | null> => null),
     nowNs: vi.fn(async () => 1_762_000_000_000_000_000n),
     ...overrides,
@@ -66,9 +106,9 @@ afterEach(async () => {
   await Promise.all(clients.splice(0).map((c) => c.close()));
 });
 
-async function connect(vault: VaultClient) {
+async function connect(vault: VaultClient, oneClick: MockOneClick | null = null) {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await createSpactServer({ vault, config }).connect(serverTransport);
+  await createSpactServer({ vault, config, oneClick, now: () => NOW }).connect(serverTransport);
   const client = new Client({ name: "test", version: "0" });
   await client.connect(clientTransport);
   clients.push(client);
@@ -81,10 +121,10 @@ function firstText(result: Awaited<ReturnType<Client["callTool"]>>): string {
 }
 
 describe("tool list", () => {
-  it("exposes exactly request_payment and get_payment_status", async () => {
+  it("exposes exactly request_payment, request_cross_chain_payment and get_payment_status", async () => {
     const client = await connect(fakeVault());
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["get_payment_status", "request_payment"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["get_payment_status", "request_cross_chain_payment", "request_payment"]);
     const request = tools.find((t) => t.name === "request_payment");
     expect(request?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: true });
     expect(tools.find((t) => t.name === "get_payment_status")?.annotations).toMatchObject({ readOnlyHint: true });
@@ -291,5 +331,106 @@ describe("transaction result parsing", () => {
     expect(decodeSuccessValue(encode(outcome))).toEqual(outcome);
     expect(() => decodeSuccessValue(encode({ ...outcome, status: "PAID" }))).toThrow();
     expect(() => decodeSuccessValue(encode({ ...outcome, reason_code: "TRUST_ME" }))).toThrow();
+  });
+});
+
+describe("request_cross_chain_payment", () => {
+  const xc = { token: args.token, amount_units: "1000000", destination_asset: SOL_USDC, recipient: PAYEE, reason: "Pay the Solana invoice", request_id: "xc-1" };
+
+  it("files the checked 1Click quote with the vault, which waits for the owner", async () => {
+    const vault = fakeVault();
+    const oneClick = mockOneClick();
+    const client = await connect(vault, oneClick);
+    const result = await client.callTool({ name: "request_cross_chain_payment", arguments: xc });
+    expect(result.isError).toBeFalsy();
+    const out = result.structuredContent as Record<string, unknown>;
+    expect(out).toMatchObject({
+      policy_decision: "OWNER_APPROVAL_REQUIRED",
+      onchain_status: "AWAITING_APPROVAL",
+      deposit_address: DEPOSIT,
+      destination_chain: "sol",
+      destination_recipient: PAYEE,
+      min_amount_out: "980000",
+      review_url: "https://approve.example/?request=xc-1&vault=vault.demo.testnet",
+    });
+    expect(vault.preflight).toHaveBeenCalledWith("request_cross_chain_payment");
+    const sent = vi.mocked(vault.requestCrossChain).mock.calls[0]?.[0] as unknown as Record<string, unknown>;
+    expect(sent).toMatchObject({ request_id: "xc-1", token: args.token, amount: "1000000", deposit_account: DEPOSIT });
+    expect((sent.terms as Record<string, unknown>).refund_to).toBe(config.vaultId);
+    const asked = oneClick.calls.find((c) => c.method === "quote")?.arg as QuoteRequest;
+    expect(asked).toMatchObject({ dry: false, refundTo: config.vaultId, recipient: PAYEE, amount: "1000000", slippageTolerance: 100 });
+    expect(Date.parse(asked.deadline) - NOW.getTime()).toBe(120 * 60_000);
+  });
+
+  it("asks 1Click nothing for a recipient the owner did not allow, and sends nothing", async () => {
+    const vault = fakeVault();
+    const oneClick = mockOneClick();
+    const client = await connect(vault, oneClick);
+    const result = await client.callTool({ name: "request_cross_chain_payment", arguments: { ...xc, recipient: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin" } });
+    expect(result.isError).toBe(true);
+    expect(firstText(result)).toMatch(/do not allow paying/);
+    expect(oneClick.calls.some((c) => c.method === "quote")).toBe(false);
+    expect(vault.requestCrossChain).not.toHaveBeenCalled();
+  });
+
+  it("refuses a quote that answers a different question, before the vault sees it", async () => {
+    const vault = fakeVault();
+    const client = await connect(vault, mockOneClick((q) => ({ ...q, quoteRequest: { ...(q.quoteRequest as object), recipient: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin" } })));
+    const result = await client.callTool({ name: "request_cross_chain_payment", arguments: xc });
+    expect(result.isError).toBe(true);
+    expect(firstText(result)).toMatch(/TERMS_CHANGED/);
+    expect(vault.requestCrossChain).not.toHaveBeenCalled();
+  });
+
+  it("is off without a live 1Click, and refuses a key that cannot call the method", async () => {
+    const off = await connect(fakeVault());
+    expect(firstText(await off.callTool({ name: "request_cross_chain_payment", arguments: xc }))).toMatch(/ENABLE_1CLICK_LIVE/);
+    const vault = fakeVault({ preflight: vi.fn(async (needs?: string) => { if (needs) throw new Error(`the key cannot call ${needs}`); }) });
+    const client = await connect(vault, mockOneClick());
+    const result = await client.callTool({ name: "request_cross_chain_payment", arguments: xc });
+    expect(firstText(result)).toMatch(/cannot call request_cross_chain_payment/);
+    expect(vault.requestCrossChain).not.toHaveBeenCalled();
+  });
+
+  it("reports 1Click's status for a paid cross-chain request, labelled as 1Click's report", async () => {
+    const paid = stored({
+      request_id: "xc-1",
+      route: "ONE_CLICK_ORIGIN_NEAR",
+      recipient: DEPOSIT,
+      amount: "1000000",
+      status: "CROSS_CHAIN_PENDING",
+      reason_code: "EXTERNAL_SETTLEMENT_PENDING",
+      cross_chain: {
+        destination_chain: "sol",
+        destination_asset: SOL_USDC,
+        destination_recipient: PAYEE,
+        refund_to: config.vaultId,
+        min_amount_out: "980000",
+        quote_hash: HASH,
+        quote_expires_at_ns: "1762180800000000000",
+      },
+    });
+    const statusAnswer = {
+      status: "SUCCESS",
+      updatedAt: NOW.toISOString(),
+      quoteResponse: {
+        timestamp: NOW.toISOString(),
+        signature: "ed25519:mock",
+        quoteRequest: { dry: false, swapType: "EXACT_INPUT", slippageTolerance: 100, originAsset: `nep141:${args.token}`, depositType: "ORIGIN_CHAIN", destinationAsset: SOL_USDC, amount: "1000000", refundTo: config.vaultId, refundType: "ORIGIN_CHAIN", recipient: PAYEE, recipientType: "DESTINATION_CHAIN", deadline: NOW.toISOString() },
+        quote: { depositAddress: DEPOSIT, amountIn: "1000000", amountOut: "990000", minAmountOut: "980000" },
+      },
+      swapDetails: { destinationChainTxHashes: [{ hash: "5h3kZr8DQ9k8s1v3Cw2n4e6R8t1y3u5i7o9p1a3s5d7f9g1h3j5k7m9z1x3c5v7b9", explorerUrl: "https://x" }] },
+    };
+    const oneClick = new MockOneClick({ tokens: [], quote: () => ({}), status: { [DEPOSIT]: statusAnswer } });
+    const client = await connect(fakeVault({ getRequest: vi.fn(async () => paid) }), oneClick);
+    const out = (await client.callTool({ name: "get_payment_status", arguments: { request_id: "xc-1" } })).structuredContent as Record<string, unknown>;
+    expect(out.cross_chain).toMatchObject({
+      deposit_address: DEPOSIT,
+      destination_recipient: PAYEE,
+      provider_status: "SUCCESS",
+      provider_final: true,
+      destination_tx_hashes: ["5h3kZr8DQ9k8s1v3Cw2n4e6R8t1y3u5i7o9p1a3s5d7f9g1h3j5k7m9z1x3c5v7b9"],
+    });
+    expect(String((out.cross_chain as Record<string, unknown>).note)).toMatch(/1Click's report, not the vault's/);
   });
 });

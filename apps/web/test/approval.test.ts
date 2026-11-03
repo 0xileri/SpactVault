@@ -14,6 +14,8 @@ const CONFIG: AppConfig = {
   securityReportUrl: "security-report.json",
   devSignerUrl: "http://127.0.0.1:8788",
   repoUrl: null,
+  vaultLabel: null,
+  oneClickUrl: null,
 };
 const NOW = 1_761_996_400_000_000_000n;
 

@@ -3,8 +3,11 @@ import { readFileSync, statSync } from "node:fs";
 import type { AccessKeyPermission } from "@spact/shared";
 import { KeyPair, type KeyPairString } from "near-api-js";
 
-/** The vault methods the agent's key may be scoped to. Nothing else is accepted. */
-export const AGENT_METHODS: readonly string[] = ["request_direct_payment", "execute_request"];
+/**
+ * The vault methods the agent's key may be scoped to. Nothing else is accepted. A key with fewer of them is
+ * fine: keys made before P1 have only the first two, and simply cannot file cross-chain requests.
+ */
+export const AGENT_METHODS: readonly string[] = ["request_direct_payment", "request_cross_chain_payment", "execute_request"];
 
 export interface AgentKey {
   accountId: string;
@@ -57,7 +60,7 @@ export function loadAgentKey(path: string, accountId: string): AgentKey {
  * limited to AGENT_METHODS. A full-access key is always refused: whoever holds it controls the
  * whole agent account.
  */
-export function keyProblem(permission: AccessKeyPermission | null, vaultId: string): string | null {
+export function keyProblem(permission: AccessKeyPermission | null, vaultId: string, needs: string | null = null): string | null {
   if (permission === null) return "the agent account has no such key";
   switch (permission.kind) {
     case "FullAccess":
@@ -71,6 +74,9 @@ export function keyProblem(permission: AccessKeyPermission | null, vaultId: stri
       }
       const extra = permission.methodNames.filter((m) => !AGENT_METHODS.includes(m));
       if (extra.length > 0) return `the key may also call ${extra.join(", ")}; limit it to ${AGENT_METHODS.join(", ")}`;
+      if (needs !== null && !permission.methodNames.includes(needs)) {
+        return `the key cannot call ${needs}; make a new agent key on the SpactVault site (Manage, Give your agent a key)`;
+      }
       return null;
     }
   }

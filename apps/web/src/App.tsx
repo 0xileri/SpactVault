@@ -1,15 +1,22 @@
 import { ArrowUpRight, CaretDown, GithubLogo } from "@phosphor-icons/react";
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+
+import { accountId as accountIdSchema, viewAccessKeyList, viewAccount } from "@spact/shared";
 
 import { ApprovalPage } from "./components/ApprovalPage.js";
 import { Logo, MarkTile } from "./components/Brand.js";
+import { CrossChainPage } from "./components/CrossChainPage.js";
 import { Dashboard } from "./components/Dashboard.js";
 import { Landing } from "./components/Landing.js";
 import { Legal } from "./components/Legal.js";
+import { Manage } from "./components/owner/Manage.js";
+import { NewVault } from "./components/owner/NewVault.js";
 import { SecurityLab } from "./components/SecurityLab.js";
 import { Badge, Button, Mono, Notice } from "./components/ui.js";
-import type { NetworkId, SiteConfig } from "./config.js";
-import { LinkContext, NETWORK_LABEL, switchHref, useLink, withNetwork } from "./network.js";
+import { networksOf, type AppConfig, type NetworkId, type SiteConfig } from "./config.js";
+import { buildForCodeHash, type VaultBuild } from "./contracts.js";
+import { errorMessage } from "./format.js";
+import { LinkContext, NETWORK_LABEL, placeLink, placeOf, switchHref, useLink } from "./network.js";
 import { createSigner } from "./signers/index.js";
 import { useSigner } from "./useSigner.js";
 
@@ -60,6 +67,8 @@ function SiteFooter({ config }: { config: SiteConfig }) {
         </div>
         <nav aria-label="Footer" className="flex flex-wrap gap-x-8 gap-y-3">
           <FooterLink href={link("?page=overview")}>Dashboard</FooterLink>
+          {config.vaultId !== null ? <FooterLink href={link("?page=manage")}>Manage</FooterLink> : null}
+          {config.vaultId !== null ? <FooterLink href={link("?page=new-vault")}>Create a vault</FooterLink> : null}
           <FooterLink href={link("?page=security")}>Security Lab</FooterLink>
           {config.repoUrl ? (
             <FooterLink href={config.repoUrl} external>
@@ -102,24 +111,128 @@ function NetworkSwitch({ current, networks }: { current: NetworkId; networks: Ne
   );
 }
 
-export function App({ config, networks = [config.network] }: { config: SiteConfig; networks?: NetworkId[] }) {
-  const mainNetwork = networks[0] ?? config.network;
-  const link = useMemo(() => {
-    const away = config.network === mainNetwork ? null : config.network;
-    return (href: string) => withNetwork(href, away);
-  }, [config.network, mainNetwork]);
-  const signer = useMemo(() => (config.vaultId === null ? null : createSigner(config)), [config]);
-  const wallet = useSigner(signer);
+/** The vaults this build lists on the current network, to move between them. Shown only when there are several. */
+function VaultPicker({ configs, current }: { configs: SiteConfig[]; current: AppConfig }) {
+  const here = configs.filter((c): c is AppConfig => c.network === current.network && c.vaultId !== null);
+  const listed = here.some((c) => c.vaultId === current.vaultId);
+  if (here.length < 2 && listed) return null;
+  const go = (vaultId: string) => {
+    const params = new URLSearchParams(window.location.search);
+    params.delete("request");
+    params.set("vault", vaultId);
+    window.location.assign(`./?${params.toString()}`);
+  };
+  return (
+    <label className="inline-flex items-center gap-1">
+      <span className="sr-only">Vault</span>
+      <select
+        value={current.vaultId}
+        onChange={(e) => go(e.target.value)}
+        className="rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-xs text-ink"
+        data-testid="vault-picker"
+      >
+        {listed ? null : <option value={current.vaultId}>{current.vaultId} (not listed)</option>}
+        {here.map((c) => (
+          <option key={c.vaultId} value={c.vaultId}>
+            {c.vaultId}
+            {c.vaultLabel ? ` · ${c.vaultLabel}` : ""}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+const OWNER_PAGES = [
+  { page: "overview", label: "Dashboard" },
+  { page: "manage", label: "Manage" },
+  { page: "crosschain", label: "Cross-chain" },
+  { page: "new-vault", label: "New vault" },
+] as const;
+
+function OwnerTabs({ page }: { page: string | null }) {
+  const link = useLink();
+  return (
+    <nav aria-label="Owner pages" className="mb-8 flex flex-wrap gap-1 border-b border-line pb-3 text-sm" data-testid="owner-tabs">
+      {OWNER_PAGES.map((p) => (
+        <a
+          key={p.page}
+          href={link(`?page=${p.page}`)}
+          aria-current={page === p.page ? "page" : undefined}
+          className={`rounded-full px-3 py-1 transition-colors duration-300 ease-fluid ${page === p.page ? "bg-zinc-100 font-medium text-ink" : "text-zinc-600 hover:text-ink"}`}
+        >
+          {p.label}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
+type UnlistedCheck = { state: "checking" } | { state: "ok"; build: VaultBuild } | { state: "refused"; why: string };
+
+/**
+ * A `vault=` that this build does not list: shown only if it runs a SpactVault build this site knows and
+ * has no access keys, so nobody can swap its code later (ADR-033). Anything else is refused as before.
+ */
+function useUnlistedVault(config: SiteConfig, vaultId: string | null): UnlistedCheck | null {
+  const [check, setCheck] = useState<UnlistedCheck | null>(null);
+  useEffect(() => {
+    if (vaultId === null) {
+      setCheck(null);
+      return;
+    }
+    if (!accountIdSchema.safeParse(vaultId).success) {
+      setCheck({ state: "refused", why: "It is not a NEAR account id." });
+      return;
+    }
+    let alive = true;
+    setCheck({ state: "checking" });
+    void (async () => {
+      try {
+        const account = await viewAccount(config.rpcUrl, vaultId);
+        if (!account) return alive && setCheck({ state: "refused", why: `There is no account ${vaultId} on ${NETWORK_LABEL[config.network]}.` });
+        const build = buildForCodeHash(account.codeHash);
+        if (!build) return alive && setCheck({ state: "refused", why: `Its code (hash ${account.codeHash}) is not a SpactVault build this site knows.` });
+        const keys = await viewAccessKeyList(config.rpcUrl, vaultId);
+        if (keys.length > 0) return alive && setCheck({ state: "refused", why: `It still has ${keys.length} access key(s), so whoever holds them could change its code.` });
+        if (alive) setCheck({ state: "ok", build });
+      } catch (e) {
+        if (alive) setCheck({ state: "refused", why: `Could not check it: ${errorMessage(e)}` });
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [config.rpcUrl, config.network, vaultId]);
+  return check;
+}
+
+export function App({ config: chosen, configs = [chosen] }: { config: SiteConfig; configs?: SiteConfig[] }) {
+  const networks = networksOf(configs);
   const params = new URLSearchParams(window.location.search);
   const requestId = params.get("request");
   const linkVault = params.get("vault");
-  const badge = NETWORK_BADGE[config.network];
   const page = params.get("page");
+  const unlistedId = chosen.vaultId !== null && linkVault !== null && linkVault !== chosen.vaultId ? linkVault : null;
+  const unlisted = useUnlistedVault(chosen, unlistedId);
+  // the vault this page shows: the chosen config, or an unlisted vault that passed the check above
+  const config: SiteConfig = unlisted?.state === "ok" && unlistedId ? { ...chosen, vaultId: unlistedId, vaultLabel: null } : chosen;
+  const link = useMemo(() => {
+    const place = placeOf(configs, config.network, config.vaultId);
+    return (href: string) => placeLink(href, place);
+  }, [configs, config.network, config.vaultId]);
+  const signer = useMemo(() => (chosen.vaultId === null ? null : createSigner(chosen)), [chosen]);
+  const wallet = useSigner(signer);
+  const badge = NETWORK_BADGE[config.network];
   const onSecurityLab = page === "security" && !requestId;
   const onDashboard = page === "overview" && !requestId;
   const onLegal = page === "legal" && !requestId;
-  const onHome = !requestId && !onSecurityLab && !onDashboard && !onLegal;
-  const foreignVault = config.vaultId !== null && linkVault !== null && linkVault !== config.vaultId;
+  const onManage = page === "manage" && !requestId;
+  const onNewVault = page === "new-vault" && !requestId;
+  const onCrossChain = page === "crosschain" && !requestId;
+  const onOwnerPage = onDashboard || onManage || onNewVault || onCrossChain;
+  const onHome = !requestId && !onSecurityLab && !onLegal && !onOwnerPage;
+  const foreignVault = unlistedId !== null && unlisted?.state !== "ok";
   const landing = onHome && !foreignVault;
   const navClass = (active: boolean) =>
     `rounded-full px-2 py-1 transition-colors duration-300 ease-fluid sm:px-3 ${active ? "bg-zinc-100 font-medium text-ink" : "text-zinc-600 hover:text-ink"}`;
@@ -146,19 +259,31 @@ export function App({ config, networks = [config.network] }: { config: SiteConfi
   } else if (config.vaultId === null) {
     content = onSecurityLab ? <SecurityLab reportUrl={config.securityReportUrl} /> : onHome ? <Landing config={config} /> : <NoVault />;
   } else if (foreignVault) {
-    content = (
-      <Notice tone="bad" title="This link is for a different vault">
-        <p>
-          The link names <Mono>{linkVault}</Mono>, but this page only approves payments for <Mono>{config.vaultId}</Mono>. Nothing was loaded.
+    content =
+      unlisted?.state === "checking" || unlisted === null ? (
+        <p className="text-sm text-zinc-500" data-testid="unlisted-checking">
+          Checking <Mono>{linkVault}</Mono>…
         </p>
-      </Notice>
-    );
+      ) : (
+        <Notice tone="bad" title="This link is for a different vault">
+          <p>
+            The link names <Mono>{linkVault}</Mono>, which is not one of this site&apos;s vaults, and it does not pass the check for other vaults.{" "}
+            {unlisted.state === "refused" ? unlisted.why : null} Nothing was loaded.
+          </p>
+        </Notice>
+      );
   } else if (onSecurityLab) {
     content = <SecurityLab reportUrl={config.securityReportUrl} />;
   } else if (requestId) {
     content = <ApprovalPage config={config} requestId={requestId} signer={signer} wallet={wallet} />;
   } else if (onDashboard) {
     content = <Dashboard config={config} />;
+  } else if (onManage) {
+    content = <Manage config={config} signer={signer} wallet={wallet} />;
+  } else if (onNewVault) {
+    content = <NewVault config={config} signer={signer} wallet={wallet} />;
+  } else if (onCrossChain) {
+    content = <CrossChainPage config={config} signer={signer} wallet={wallet} />;
   } else {
     content = <Landing config={config} />;
   }
@@ -228,9 +353,16 @@ export function App({ config, networks = [config.network] }: { config: SiteConfi
                     ) : (
                       <>
                         <Badge tone={badge.tone}>{badge.label}</Badge>
-                        <span>
+                        <span className="inline-flex flex-wrap items-center gap-1">
                           vault <Mono>{config.vaultId}</Mono>
+                          {config.vaultLabel ? <span>({config.vaultLabel})</span> : null}
                         </span>
+                        {foreignVault ? null : <VaultPicker configs={configs} current={config} />}
+                        {unlisted?.state === "ok" ? (
+                          <span data-testid="unlisted-vault" title={`Code hash ${unlisted.build.codeHash}`}>
+                            <Badge tone="info">not listed by this site · verified {unlisted.build.id.toUpperCase()} code, no keys</Badge>
+                          </span>
+                        ) : null}
                       </>
                     )}
                   </div>
@@ -239,6 +371,7 @@ export function App({ config, networks = [config.network] }: { config: SiteConfi
                   </div>
                 </div>
               )}
+              {onOwnerPage && config.vaultId !== null && !foreignVault ? <OwnerTabs page={page} /> : null}
               {content}
             </div>
           )}

@@ -6,6 +6,21 @@
 	persist_config off
 }
 
+# NEAR Intents 1Click, reached by the page on its own origin (ADR-033): no CORS to depend on, and no API key
+# anywhere near the browser (none is sent). Only the three read/quote paths the site uses; nothing that submits
+# or moves funds. Cookies, auth and the page's origin are stripped on the way out, cookies on the way back.
+(oneclick) {
+	reverse_proxy https://1click.chaindefuser.com {
+		header_up Host {upstream_hostport}
+		header_up -Cookie
+		header_up -Authorization
+		header_up -Origin
+		header_up -Referer
+		header_down -Set-Cookie
+		header_down -Access-Control-Allow-Origin
+	}
+}
+
 # Railway sets PORT and routes HTTPS to it; TLS ends at Railway's edge.
 :{$PORT:8080} {
 	root * {$SITE_ROOT:/srv}
@@ -27,6 +42,30 @@
 	header @hashed Cache-Control "public, max-age=31536000, immutable"
 	@page path / /index.html
 	header @page Cache-Control "no-cache"
+
+	handle_path /1click/* {
+		header Cache-Control "no-store"
+		request_body {
+			max_size 16KB
+		}
+		@read {
+			method GET
+			path /v0/tokens /v0/status
+		}
+		@quote {
+			method POST
+			path /v0/quote
+		}
+		handle @read {
+			import oneclick
+		}
+		handle @quote {
+			import oneclick
+		}
+		handle {
+			respond "not a 1Click path this site uses" 404
+		}
+	}
 
 	file_server
 

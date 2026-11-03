@@ -1,4 +1,18 @@
-import type { FunctionCallAction } from "../approval.js";
+/**
+ * The actions an owner's wallet is asked to sign, in the shape near-connect accepts. Contract deploys are
+ * not here: the create-vault page deploys with a temporary key of the new account itself (owner/deploy.ts).
+ */
+export type WalletAction =
+  | { type: "CreateAccount" }
+  | { type: "Transfer"; params: { deposit: string } }
+  | {
+      type: "AddKey";
+      params: {
+        publicKey: string;
+        accessKey: { permission: "FullAccess" | { receiverId: string; allowance?: string; methodNames: string[] } };
+      };
+    }
+  | { type: "FunctionCall"; params: { methodName: string; args: Record<string, unknown>; gas: string; deposit: string } };
 
 export interface SignResult {
   txHash: string | null;
@@ -11,7 +25,7 @@ export interface OwnerSigner {
   restore(): Promise<string | null>;
   connect(): Promise<string>;
   disconnect(): Promise<void>;
-  signAndSend(receiverId: string, actions: FunctionCallAction[]): Promise<SignResult>;
+  signAndSend(receiverId: string, actions: WalletAction[]): Promise<SignResult>;
 }
 
 export class SignError extends Error {

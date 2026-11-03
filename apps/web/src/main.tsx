@@ -30,7 +30,7 @@ if (window.top !== window.self) {
     const config = chooseConfig(configs, window.location.search);
     root.render(
       <StrictMode>
-        <App config={config} networks={configs.map((c) => c.network)} />
+        <App config={config} configs={configs} />
       </StrictMode>,
     );
   } catch (e) {

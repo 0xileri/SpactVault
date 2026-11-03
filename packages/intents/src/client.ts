@@ -31,18 +31,35 @@ export function liveOneClick(options: LiveOptions): OneClickApi {
   if (options.enabled !== true) throw new Error("ENABLE_1CLICK_LIVE is not true: the live 1Click API is off");
   const base = new URL(options.baseUrl ?? ONE_CLICK_BASE_URL);
   if (base.protocol !== "https:") throw new Error("the 1Click base URL must use https");
+  const headers: Record<string, string> = {};
+  if (options.jwt) headers.authorization = `Bearer ${options.jwt}`;
+  return oneClickOverHttp(base.toString(), { fetch: options.fetch, timeoutMs: options.timeoutMs, headers });
+}
+
+export interface HttpOptions {
+  fetch?: typeof fetch | undefined;
+  timeoutMs?: number | undefined;
+  headers?: Record<string, string>;
+}
+
+/**
+ * The 1Click API at `base`, which may carry a path prefix: `/1click` (the web app's same-origin proxy,
+ * apps/web/Caddyfile), `https://1click.chaindefuser.com`, or a local mock. Paths are appended to the prefix,
+ * never resolved against the host. Callers decide whether a base is allowed (liveOneClick, apps/web config).
+ */
+export function oneClickOverHttp(base: string, options: HttpOptions = {}): OneClickApi {
+  const prefix = base.replace(/\/+$/, "");
   const doFetch = options.fetch ?? fetch;
   const timeoutMs = options.timeoutMs ?? 10_000;
-  const headers: Record<string, string> = { accept: "application/json" };
-  if (options.jwt) headers.authorization = `Bearer ${options.jwt}`;
+  const headers: Record<string, string> = { accept: "application/json", ...options.headers };
 
   async function call(path: string, init: RequestInit = {}): Promise<unknown> {
-    const res = await doFetch(new URL(path, base), {
+    const res = await doFetch(`${prefix}${path}`, {
       ...init,
       headers: { ...headers, ...(init.body ? { "content-type": "application/json" } : {}) },
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) throw new Error(`1Click ${path} answered HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`1Click ${path.split("?")[0]} answered HTTP ${res.status}`);
     return res.json();
   }
 

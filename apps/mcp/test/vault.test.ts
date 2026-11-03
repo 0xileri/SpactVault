@@ -14,6 +14,8 @@ const config: McpConfig = {
   agentKeyFile: "/unused",
   approvalUrl: null,
   explorerTxUrl: null,
+  oneClick: null,
+  quoteDir: null,
 };
 
 const fcKey = {

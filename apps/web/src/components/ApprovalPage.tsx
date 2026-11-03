@@ -7,8 +7,10 @@ import { explorerTxLink, type AppConfig } from "../config.js";
 import { outcomeLine } from "../dashboard.js";
 import { errorMessage, formatAmount, formatRelative, formatUtc, shortHash } from "../format.js";
 import { loadSnapshot, waitForRequest, type VaultSnapshot } from "../near/vault.js";
+import { useOneClick } from "../oneclick.js";
 import { SignError, type OwnerSigner } from "../signers/index.js";
 import type { SignerState } from "../useSigner.js";
+import { OneClickPanel } from "./OneClickPanel.js";
 import { Button, Card, Field, Mono, Notice, StatusBadge, statusLabel } from "./ui.js";
 
 type Action = "approve" | "reject";
@@ -41,6 +43,8 @@ export function ApprovalPage({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [executeNow, setExecuteNow] = useState(true);
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
+  const [oneClickNonce, setOneClickNonce] = useState(0);
+  const tracking = useOneClick(config, snapshot?.request ?? null, oneClickNonce);
 
   const refresh = useCallback(async () => {
     try {
@@ -65,7 +69,7 @@ export function ApprovalPage({
   }
   if (!snapshot) return <p className="text-sm text-zinc-500">Reading the request…</p>;
 
-  const a = assess({ config, snapshot, signerAvailable: signer !== null, signerAccountId: wallet.accountId, executeNow });
+  const a = assess({ config, snapshot, signerAvailable: signer !== null, signerAccountId: wallet.accountId, executeNow, deposit: tracking?.check ?? null });
   const { request, token, budget, policy } = snapshot;
   const busy = phase.kind === "signing" || phase.kind === "confirming";
 
@@ -114,7 +118,20 @@ export function ApprovalPage({
             {formatAmount(request.amount, token)}
           </p>
           {request.cross_chain ? (
-            <CrossChainRoute request={request} terms={request.cross_chain} />
+            <>
+              <CrossChainRoute request={request} terms={request.cross_chain} />
+              <div className="mt-4">
+                <OneClickPanel
+                  config={config}
+                  request={request}
+                  tracking={tracking}
+                  signer={signer}
+                  wallet={wallet}
+                  owner={snapshot.config.owner}
+                  onRegistered={() => setOneClickNonce((n) => n + 1)}
+                />
+              </div>
+            </>
           ) : (
             <p className="mt-2 text-base text-zinc-600">
               to{" "}

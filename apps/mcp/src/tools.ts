@@ -1,5 +1,18 @@
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { McpServer } from "@modelcontextprotocol/server";
-import { accountId, explainReason, type PaymentOutcome, type Status } from "@spact/shared";
+import {
+  buildQuoteRequest,
+  crossChainArgs,
+  findRoute,
+  MAX_SLIPPAGE_BPS,
+  QuoteError,
+  reconcile,
+  statusResponseSchema,
+  type OneClickApi,
+} from "@spact/intents";
+import { accountId, EXTERNAL_ID_RE, explainReason, type PaymentOutcome, type PaymentRequest, type Status } from "@spact/shared";
 import { z } from "zod";
 
 import { explorerTxLink, reviewLink, type McpConfig } from "./config.js";
@@ -63,6 +76,49 @@ export const requestPaymentOutput = z.object({
 });
 type RequestPaymentOutput = z.infer<typeof requestPaymentOutput>;
 
+const externalId = z.string().regex(EXTERNAL_ID_RE, "1-128 characters: letters, digits, ':', '.', '_' or '-'");
+
+export const requestCrossChainInput = z.object({
+  token: accountId.describe("NEP-141 token on NEAR that leaves the vault, e.g. native USDC"),
+  amount_units: amountUnits.describe("Amount of that token in its smallest unit, as a string. With 6 decimals, 1 USDC is \"1000000\"."),
+  destination_asset: externalId.describe("1Click asset id of what the recipient gets, e.g. nep141:sol-...omft.near for USDC on Solana"),
+  recipient: externalId.describe("Final recipient on the destination chain, in that chain's address format. Must be on the owner's allowlist for this route."),
+  reason: reason.describe("Why you are paying. The owner sees this text, word for word, when approving."),
+  request_id: requestId.describe("Your unique id for this payment. To retry, reuse the same id; never retry with a new id."),
+  slippage_bps: z.number().int().min(0).max(MAX_SLIPPAGE_BPS).default(100).describe("Most slippage accepted, in basis points (100 = 1%)"),
+  deadline_minutes: z
+    .number()
+    .int()
+    .min(10)
+    .max(24 * 60)
+    .default(120)
+    .describe("How long the 1Click quote stays valid. The owner must approve before it ends; the vault refuses it 60 s before."),
+});
+
+export const requestCrossChainOutput = requestPaymentOutput.extend({
+  deposit_address: z.string(),
+  destination_chain: z.string(),
+  destination_recipient: z.string(),
+  min_amount_out: z.string(),
+  quote_deadline: z.string(),
+  quote_hash: z.string(),
+});
+type RequestCrossChainOutput = z.infer<typeof requestCrossChainOutput>;
+
+const crossChainStatus = z.object({
+  deposit_address: z.string(),
+  destination_chain: z.string(),
+  destination_asset: z.string(),
+  destination_recipient: z.string(),
+  min_amount_out: z.string(),
+  /** 1Click's own report. Never proof, and never restores budget. */
+  provider_status: z.string().optional(),
+  provider_final: z.boolean().optional(),
+  reported_refund_units: z.string().optional(),
+  destination_tx_hashes: z.array(z.string()).optional(),
+  note: z.string(),
+});
+
 export const getPaymentStatusOutput = z.object({
   request_id: z.string(),
   source_status: z.enum([...STATUSES, "NOT_FOUND"]),
@@ -79,6 +135,7 @@ export const getPaymentStatusOutput = z.object({
   updated_at: z.string().optional(),
   review_url: z.string().optional(),
   explorer_url: z.string().optional(),
+  cross_chain: crossChainStatus.optional(),
 });
 type GetPaymentStatusOutput = z.infer<typeof getPaymentStatusOutput>;
 
@@ -125,10 +182,33 @@ function summarize(out: RequestPaymentOutput, amount: string, token: string, rec
 
 export interface ServerDeps {
   vault: VaultClient;
-  config: Pick<McpConfig, "network" | "vaultId" | "agentId" | "approvalUrl" | "explorerTxUrl">;
+  config: Pick<McpConfig, "network" | "vaultId" | "agentId" | "approvalUrl" | "explorerTxUrl"> & Partial<Pick<McpConfig, "quoteDir">>;
+  /** The 1Click API for cross-chain requests: live (ENABLE_1CLICK_LIVE=true) or, in tests, MockOneClick. null: off. */
+  oneClick?: OneClickApi | null;
+  /** The clock for quote deadlines. Tests pin it. */
+  now?: () => Date;
 }
 
-export function createSpactServer({ vault, config }: ServerDeps): McpServer {
+/** Keeps the full quote (with 1Click's signature) next to the request: what to show if 1Click ever disputes it. */
+function saveQuote(dir: string, requestId: string, record: unknown) {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const file = join(dir, `${requestId}.json`);
+  writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 });
+  chmodSync(file, 0o600);
+}
+
+function crossChainNote(request: PaymentRequest): string {
+  switch (request.status) {
+    case "AWAITING_APPROVAL":
+      return "Waiting for the owner. Cross-chain payments always need the owner's approval.";
+    case "CROSS_CHAIN_PENDING":
+      return "The vault paid the 1Click deposit address. Delivery on the destination chain is 1Click's report, not the vault's; a reported refund does not restore budget.";
+    default:
+      return `The vault's status is ${request.status}.`;
+  }
+}
+
+export function createSpactServer({ vault, config, oneClick = null, now = () => new Date() }: ServerDeps): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION }, { maxToolInputElements: 100 });
   // tx hashes of requests this process submitted, for explorer links in get_payment_status
   const txHashes = new Map<string, string>();
@@ -205,6 +285,128 @@ export function createSpactServer({ vault, config }: ServerDeps): McpServer {
   );
 
   server.registerTool(
+    "request_cross_chain_payment",
+    {
+      title: "Request a cross-chain SpactVault payment (NEAR Intents 1Click)",
+      description:
+        `Ask the SpactVault contract ${config.vaultId} on NEAR ${config.network} to pay someone on another chain through NEAR Intents 1Click. ` +
+        "This tool gets a 1Click quote for exactly the amount, destination asset and recipient given, checks it, and files it with the vault. " +
+        "The vault never pays it on its own: it always waits for the owner to approve the exact deposit address and destination in their wallet, and only routes and recipients the owner allowlisted are accepted. " +
+        "This tool cannot approve, change the policy, or move funds any other way.",
+      inputSchema: requestCrossChainInput,
+      outputSchema: requestCrossChainOutput,
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
+    },
+    async (input) => {
+      const tool = "request_cross_chain_payment";
+      if (!oneClick) {
+        return errorResult("Cross-chain payments are off on this server: the operator has not set ENABLE_1CLICK_LIVE=true. Nothing was sent.");
+      }
+      try {
+        await vault.preflight("request_cross_chain_payment");
+      } catch (e) {
+        log({ tool, request_id: input.request_id, refused: (e as Error).message });
+        return errorResult(`Refused before sending anything: ${(e as Error).message}`);
+      }
+
+      // the owner's allowlist, checked here too so a payment it would refuse costs no 1Click quote or gas
+      let chainName: string;
+      try {
+        const route = findRoute(await oneClick.tokens(), input.token, input.destination_asset);
+        if (!route) return errorResult(`1Click does not list a route from ${input.token} on NEAR to ${input.destination_asset}. Nothing was sent.`);
+        chainName = route.destination.blockchain;
+        const policy = await vault.getPolicy();
+        const allowed = policy.cross_chain.find(
+          (r) => r.token === input.token && r.destination_chain === chainName && r.destination_asset === input.destination_asset,
+        );
+        if (!allowed?.recipients.includes(input.recipient)) {
+          return errorResult(
+            `The owner's rules do not allow paying ${input.recipient} on ${chainName} with ${input.destination_asset}. ` +
+              "Ask the owner to allow it on the SpactVault site (Cross-chain page). Nothing was sent.",
+          );
+        }
+      } catch (e) {
+        return errorResult(`Could not check the route: ${(e as Error).message}. Nothing was sent.`);
+      }
+
+      let filed: ReturnType<typeof crossChainArgs>;
+      try {
+        const asked = buildQuoteRequest({
+          vaultId: config.vaultId,
+          token: input.token,
+          amount: BigInt(input.amount_units),
+          destinationAsset: input.destination_asset,
+          recipient: input.recipient,
+          slippageBps: input.slippage_bps,
+          deadline: new Date(now().getTime() + input.deadline_minutes * 60_000),
+          dry: false,
+        });
+        const raw = await oneClick.quote(asked);
+        filed = crossChainArgs(asked, raw, chainName, now());
+        if (config.quoteDir) saveQuote(config.quoteDir, input.request_id, { asked, response: raw, quote_hash: filed.terms.quote_hash });
+      } catch (e) {
+        const why = e instanceof QuoteError ? e.message : `1Click quote failed: ${(e as Error).message}`;
+        log({ tool, request_id: input.request_id, quote_refused: why });
+        return errorResult(`${why}. Nothing was sent to the vault.`);
+      }
+
+      const result = await vault.requestCrossChain({
+        request_id: input.request_id,
+        token: filed.token,
+        amount: filed.amount,
+        deposit_account: filed.deposit_account,
+        reason: input.reason,
+        terms: filed.terms,
+      });
+      if (result.kind === "unknown") {
+        log({ tool, request_id: input.request_id, unknown: result.message, tx_hash: result.txHash });
+        return errorResult(
+          `The result of request ${input.request_id} is unknown (${result.message}). Call get_payment_status with the same request_id, and only retry with that same id.`,
+        );
+      }
+      if (result.kind === "rejected") {
+        log({ tool, request_id: input.request_id, rejected: result.reasonCode, tx_hash: result.txHash });
+        const why = result.reasonCode ? `${result.reasonCode}: ${explainReason(result.reasonCode)}` : result.message;
+        return errorResult(`The vault refused request ${input.request_id} (${why}). Nothing was paid. Transaction ${result.txHash}.`);
+      }
+      const { outcome, txHash } = result;
+      if (outcome.request_id !== input.request_id && outcome.request_id !== "<invalid>") {
+        return errorResult(`The vault answered for a different request id. Check get_payment_status for ${input.request_id}.`);
+      }
+      if (outcome.status !== "BLOCKED") {
+        txHashes.set(input.request_id, txHash);
+        if (txHashes.size > 1000) txHashes.delete(txHashes.keys().next().value as string);
+      }
+      const out: RequestCrossChainOutput = {
+        request_id: input.request_id,
+        policy_decision: policyDecisionOf(outcome),
+        onchain_status: outcome.status,
+        reason_code: outcome.reason_code,
+        explanation: explainReason(outcome.reason_code),
+        tx_hash: txHash,
+        deposit_address: filed.deposit_account,
+        destination_chain: filed.terms.destination_chain,
+        destination_recipient: filed.terms.destination_recipient,
+        min_amount_out: filed.terms.min_amount_out,
+        quote_deadline: isoFromNs(filed.terms.quote_expires_at_ns),
+        quote_hash: filed.terms.quote_hash,
+      };
+      const review = outcome.status === "AWAITING_APPROVAL" ? reviewLink(config, input.request_id) : null;
+      if (review) out.review_url = review;
+      const explorer = explorerTxLink(config, txHash);
+      if (explorer) out.explorer_url = explorer;
+      log({ tool, request_id: input.request_id, status: out.onchain_status, reason_code: out.reason_code, deposit: out.deposit_address, tx_hash: txHash });
+      const summary =
+        outcome.status === "AWAITING_APPROVAL"
+          ? `Not paid yet: request ${input.request_id} (${input.amount_units} units of ${input.token} to ${input.recipient} on ${out.destination_chain}, through 1Click deposit address ${out.deposit_address}) is waiting for the owner${out.review_url ? ` (${out.review_url})` : ""}. The quote ends ${out.quote_deadline}. Check later with get_payment_status.`
+          : outcome.status === "BLOCKED"
+            ? `Blocked by the vault policy (${out.reason_code}): ${out.explanation} Nothing was paid.`
+            : `Request ${input.request_id} is ${out.onchain_status}.`;
+      return { content: text(summary, out), structuredContent: out };
+    },
+  );
+
+  server.registerTool(
     "get_payment_status",
     {
       title: "Get a SpactVault payment's status",
@@ -249,6 +451,32 @@ export function createSpactServer({ vault, config }: ServerDeps): McpServer {
       const hash = txHashes.get(request_id);
       const explorer = hash ? explorerTxLink(config, hash) : null;
       if (explorer) out.explorer_url = explorer;
+      if (request.cross_chain) {
+        const t = request.cross_chain;
+        const cc: NonNullable<GetPaymentStatusOutput["cross_chain"]> = {
+          deposit_address: request.recipient,
+          destination_chain: t.destination_chain,
+          destination_asset: t.destination_asset,
+          destination_recipient: t.destination_recipient,
+          min_amount_out: t.min_amount_out,
+          note: crossChainNote(request),
+        };
+        if (oneClick && request.status === "CROSS_CHAIN_PENDING") {
+          try {
+            const raw = await oneClick.status(request.recipient);
+            const r = reconcile(request, raw);
+            cc.provider_status = r.providerStatus;
+            cc.provider_final = r.providerFinal;
+            if (r.reportedRefund) cc.reported_refund_units = r.reportedRefund;
+            const parsed = statusResponseSchema.parse(raw);
+            const dest = (parsed.swapDetails?.destinationChainTxHashes ?? []).map((d) => d.hash);
+            if (dest.length > 0) cc.destination_tx_hashes = dest;
+          } catch (e) {
+            cc.note = `${cc.note} 1Click's status could not be read: ${(e as Error).message}`;
+          }
+        }
+        out.cross_chain = cc;
+      }
 
       const summary = expired
         ? `Request ${request_id} expired before it was ${request.status === "APPROVED" ? "paid" : "approved"}. Nothing was paid.`

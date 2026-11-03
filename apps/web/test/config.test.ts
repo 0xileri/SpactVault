@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ConfigError, explorerAccountLink, explorerTxLink, parseConfig, parseSiteConfig, parseSiteConfigs } from "../src/config.js";
+import { ConfigError, explorerAccountLink, explorerTxLink, networksOf, parseConfig, parseSiteConfig, parseSiteConfigs } from "../src/config.js";
 
 const BASE = {
   VITE_NEAR_NETWORK: "testnet",
@@ -101,3 +101,46 @@ describe("parseSiteConfigs", () => {
     expect(() => parseSiteConfigs({ ...MAINNET, ...testnet, VITE_VAULT_ID: "" })).toThrow(/needs a main vault/);
   });
 });
+
+describe("more than one vault per network", () => {
+  const MAINNET = { ...BASE, VITE_NEAR_NETWORK: "mainnet", VITE_VAULT_ID: "vault2.owner.near", VITE_VAULT_LABEL: "P1 vault" };
+
+  it("lists extra vaults after the default, with their labels, and each network once", () => {
+    const configs = parseSiteConfigs({
+      ...MAINNET,
+      VITE_EXTRA_VAULTS: "vault.owner.near=P0 vault (direct only), old.owner.near",
+      VITE_TESTNET_VAULT_ID: "vault.owner.testnet",
+      VITE_TESTNET_RPC_URL: "https://test.rpc.example",
+    });
+    expect(configs.map((c) => [c.network, c.vaultId, c.vaultLabel])).toEqual([
+      ["mainnet", "vault2.owner.near", "P1 vault"],
+      ["mainnet", "vault.owner.near", "P0 vault (direct only)"],
+      ["mainnet", "old.owner.near", null],
+      ["testnet", "vault.owner.testnet", null],
+    ]);
+    expect(configs[1]).toMatchObject({ rpcUrl: "https://rpc.example.org/", explorerTxUrl: "https://nearblocks.io/txns/{hash}" });
+    expect(networksOf(configs)).toEqual(["mainnet", "testnet"]);
+  });
+
+  it("refuses extra vaults that are malformed, listed twice, unlabeled safely or without a default", () => {
+    expect(() => parseSiteConfigs({ ...MAINNET, VITE_EXTRA_VAULTS: "Vault.near" })).toThrow(/account id/);
+    expect(() => parseSiteConfigs({ ...MAINNET, VITE_EXTRA_VAULTS: "vault2.owner.near" })).toThrow(/listed twice/);
+    expect(() => parseSiteConfigs({ ...MAINNET, VITE_EXTRA_VAULTS: "vault.owner.near=<script>" })).toThrow(/letters/);
+    expect(() => parseSiteConfigs({ ...MAINNET, VITE_VAULT_ID: "", VITE_EXTRA_VAULTS: "vault.owner.near" })).toThrow(/needs a main vault/);
+    expect(() => parseSiteConfigs({ ...MAINNET, VITE_TESTNET_EXTRA_VAULTS: "x.testnet" })).toThrow(/needs VITE_TESTNET_VAULT_ID/);
+  });
+});
+
+describe("1Click URL", () => {
+  it("accepts a same-origin path or an https URL, and http only for a local sandbox", () => {
+    expect(parseConfig(BASE).oneClickUrl).toBeNull();
+    expect(parseConfig({ ...BASE, VITE_ONECLICK_URL: "/1click/" }).oneClickUrl).toBe("/1click");
+    expect(parseConfig({ ...BASE, VITE_ONECLICK_URL: "https://1click.chaindefuser.com" }).oneClickUrl).toBe("https://1click.chaindefuser.com");
+    expect(() => parseConfig({ ...BASE, VITE_ONECLICK_URL: "http://1click.example" })).toThrow(/https/);
+    expect(() => parseConfig({ ...BASE, VITE_ONECLICK_URL: "//evil.example/1click" })).toThrow();
+    expect(() => parseConfig({ ...BASE, VITE_ONECLICK_URL: "https://1click.example/?jwt=x" })).toThrow(/query/);
+    const sandbox = { ...BASE, VITE_NEAR_NETWORK: "sandbox", VITE_NEAR_RPC_URL: "http://127.0.0.1:3030" };
+    expect(parseConfig({ ...sandbox, VITE_ONECLICK_URL: "http://127.0.0.1:8797" }).oneClickUrl).toBe("http://127.0.0.1:8797");
+  });
+});
+

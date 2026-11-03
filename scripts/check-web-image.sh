@@ -40,6 +40,15 @@ curl -sS "$BASE/no-such-file" | grep -q "This page does not exist" && pass "unkn
 code="$(curl -sS -o /dev/null -w '%{http_code}' --path-as-is "$BASE/../../etc/passwd")"
 [ "$code" = 404 ] || [ "$code" = 400 ] && pass "path traversal refused ($code)" || fail "path traversal returned $code"
 
+# The 1Click proxy (ADR-033) forwards only GET /v0/tokens, GET /v0/status and POST /v0/quote; these must not
+# reach 1Click at all, so they are answered locally whatever 1Click's state.
+for probe in "GET /1click/v0/deposit/submit" "POST /1click/v0/status" "GET /1click/v0/quote" "GET /1click/" "GET /1click/../index.html"; do
+  code="$(curl -sS -o /dev/null -w '%{http_code}' --path-as-is -X "${probe%% *}" "$BASE${probe#* }")"
+  [ "$code" = 404 ] || [ "$code" = 400 ] && pass "1Click proxy refuses $probe ($code)" || fail "1Click proxy answered $probe with $code"
+done
+code="$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/contracts/spact_vault-p1.wasm")"
+[ "$code" = 200 ] && pass "vault wasm served for the create-vault page" || fail "vault wasm returned $code"
+
 if [ -n "$SITE" ]; then
   grep -q "<meta property=\"og:image\" content=\"${SITE%/}/og-image.png\">" <<<"$html" && pass "og:image is ${SITE%/}/og-image.png" || fail "og:image is not under $SITE"
 fi
