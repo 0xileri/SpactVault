@@ -2,7 +2,7 @@ import type { Policy } from "@spact/shared";
 import { describe, expect, it } from "vitest";
 
 import { policyOf, withRoute } from "../src/components/owner/RulesEditor.js";
-import { P1_BUILD } from "../src/contracts.js";
+import { lockProblem, P1_BUILD } from "../src/contracts.js";
 import {
   AGENT_METHODS,
   agentKeyFile,
@@ -12,6 +12,10 @@ import {
   describeActions,
   formatNear,
   fundActions,
+  fundImplicitActions,
+  implicitAccountId,
+  INIT_KEY_ALLOWANCE,
+  NAMED_INIT_GAS,
   OwnerInputError,
   parseNear,
   policyChanges,
@@ -64,13 +68,33 @@ describe("amounts and names", () => {
 });
 
 describe("transactions the owner signs", () => {
-  it("creates the vault account with one temporary full-access key and nothing else", () => {
-    const actions = createVaultAccountActions(parseNear("3.2"), "ed25519:Temp1111111111111111111111111111111111111111");
+  const wasm = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]);
+
+  it("creates a named vault with its code and an init key that can only call new, never a full-access key", () => {
+    const actions = createVaultAccountActions(VAULT, parseNear("3.2"), wasm, "ed25519:Temp1111111111111111111111111111111111111111");
     expect(actions).toEqual([
       { type: "CreateAccount" },
       { type: "Transfer", params: { deposit: "3200000000000000000000000" } },
-      { type: "AddKey", params: { publicKey: "ed25519:Temp1111111111111111111111111111111111111111", accessKey: { permission: "FullAccess" } } },
+      { type: "DeployContract", params: { code: wasm } },
+      {
+        type: "AddKey",
+        params: {
+          publicKey: "ed25519:Temp1111111111111111111111111111111111111111",
+          accessKey: { permission: { receiverId: VAULT, allowance: "50000000000000000000000", methodNames: ["new"] } },
+        },
+      },
     ]);
+    expect(INIT_KEY_ALLOWANCE).toBe(YOCTO_PER_NEAR / 20n);
+    // the allowance must cover all the gas `new` attaches, priced at the sandbox's 10^9 yocto per gas with room for the
+    // transaction's own conversion cost (mainnet's floor is 10^8)
+    expect(NAMED_INIT_GAS * 10n ** 9n * 3n / 2n).toBeLessThan(INIT_KEY_ALLOWANCE);
+    expect(JSON.stringify(actions, (_, v: unknown) => (v instanceof Uint8Array ? "<code>" : v))).not.toContain("FullAccess");
+  });
+
+  it("asks the wallet for nothing but a transfer on the any-wallet path", async () => {
+    expect(fundImplicitActions(parseNear("3.2"))).toEqual([{ type: "Transfer", params: { deposit: "3200000000000000000000000" } }]);
+    // the implicit account of a key is the hex of its 32 bytes (all-zero key -> 64 zeros)
+    expect(await implicitAccountId("ed25519:11111111111111111111111111111111")).toBe("0".repeat(64));
   });
 
   it("gives the agent a key for the three agent methods on this vault only, with a gas allowance", () => {
@@ -105,12 +129,15 @@ describe("transactions the owner signs", () => {
   });
 
   it("describes each action in words for the review screen", () => {
-    const lines = describeActions(VAULT, createVaultAccountActions(parseNear("3.2"), "ed25519:TempKeyTempKeyTempKey"));
+    const lines = describeActions(VAULT, createVaultAccountActions(VAULT, parseNear("3.2"), wasm, "ed25519:TempKeyTempKeyTempKey"));
     expect(lines.map((l) => l.summary)).toEqual([
       `Create the account ${VAULT}`,
       `Send 3.2 NEAR to ${VAULT}`,
-      `Give ${VAULT} a temporary full-access key (ed25519:TempKeyT…), held only by this tab`,
+      `Install 8 bytes of contract code on ${VAULT}`,
+      `Give ${VAULT} a key that can only call new on ${VAULT}, with at most 0.05 NEAR of gas`,
     ]);
+    // the review shows the code's size, not 274 kB of numbers
+    expect(lines[2]?.detail).toEqual({ type: "DeployContract", params: { code: "<8 bytes, checked against the published build>" } });
     expect(describeActions(VAULT, setPausedActions(true))[0]?.summary).toBe(`Call set_paused on ${VAULT} (with 1 yoctoNEAR, so only a full-access key can sign it)`);
   });
 
@@ -194,10 +221,41 @@ describe("after the deploy", () => {
     expect(checkDeployed(good, { build: P1_BUILD, init, vaultId: VAULT }).ok).toBe(true);
     const keyLeft = checkDeployed({ ...good, keys: [{ publicKey: "ed25519:x", permission: { kind: "FullAccess" } }] }, { build: P1_BUILD, init, vaultId: VAULT });
     expect(keyLeft.ok).toBe(false);
-    expect(keyLeft.lines.find((l) => !l.ok)?.text).toMatch(/1 access key/);
+    expect(keyLeft.lines.find((l) => !l.ok)?.text).toMatch(/1 full-access key/);
     const otherCode = checkDeployed({ ...good, account: { ...account, codeHash: "11111111111111111111111111111111" } }, { build: P1_BUILD, init, vaultId: VAULT });
     expect(otherCode.ok).toBe(false);
     const otherOwner = checkDeployed({ ...good, config: { ...config, owner: "mallory.near" } }, { build: P1_BUILD, init, vaultId: VAULT });
     expect(otherOwner.ok).toBe(false);
+  });
+
+  const initKey = { publicKey: "ed25519:init", permission: { kind: "FunctionCall" as const, receiverId: VAULT, methodNames: ["new"], allowance: "1" } };
+
+  it("accepts the spent init key of a named vault, and nothing more", () => {
+    const named = checkDeployed({ ...good, keys: [initKey] }, { build: P1_BUILD, init, vaultId: VAULT });
+    expect(named.ok).toBe(true);
+    expect(named.lines.map((l) => l.text)).toContain(
+      "No full-access key: nobody can change its code. One spent setup key is left; it can only call `new`, which the vault now refuses",
+    );
+    const fc = (receiverId: string, methodNames: string[]) => ({ publicKey: "ed25519:k", permission: { kind: "FunctionCall" as const, receiverId, methodNames, allowance: null } });
+    for (const extra of [
+      { publicKey: "ed25519:full", permission: { kind: "FullAccess" as const } },
+      fc(VAULT, []), // an empty method list allows every method
+      fc(VAULT, ["new", "set_policy"]),
+      fc(VAULT, ["set_policy"]),
+      fc("other.near", ["new"]),
+      { publicKey: "ed25519:gas", permission: { kind: "Other" as const, name: "GasKeyFullAccess" } },
+    ]) {
+      expect(checkDeployed({ ...good, keys: [initKey, extra] }, { build: P1_BUILD, init, vaultId: VAULT }).ok).toBe(false);
+    }
+  });
+});
+
+describe("lockProblem", () => {
+  it("calls a vault locked only with no keys or only init keys", () => {
+    expect(lockProblem([], VAULT)).toBeNull();
+    expect(lockProblem([{ permission: { kind: "FunctionCall", receiverId: VAULT, methodNames: ["new"] } }], VAULT)).toBeNull();
+    expect(lockProblem([{ permission: { kind: "FullAccess" } }], VAULT)).toMatch(/1 full-access key/);
+    expect(lockProblem([{ permission: { kind: "FunctionCall", receiverId: VAULT, methodNames: [] } }], VAULT)).toMatch(/1 access key/);
+    expect(lockProblem([{ permission: { kind: "FunctionCall", receiverId: "x.near", methodNames: ["new"] } }], VAULT)).toMatch(/1 access key/);
   });
 });

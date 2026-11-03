@@ -3,11 +3,13 @@
  *
  * Holds the sandbox owner key from the demo-sandbox fixture and signs only what the site's owner pages
  * send (see parseSignRequest): decisions and settings on the demo vault or a vault the owner created from
- * the site, funding with the demo token, and creating sub-accounts of the owner. Listens on 127.0.0.1 only
+ * the site, funding with the demo token, creating sub-accounts of the owner (with the published vault code for
+ * a named vault), and plain NEAR transfers that create implicit accounts (the any-wallet path, ADR-035). Listens on 127.0.0.1 only
  * and refuses to start unless the fixture points at a local sandbox. Real networks use a real wallet instead.
  *
  * Usage: node --experimental-strip-types dev/dev-signer.ts <fixture.json>
  */
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
@@ -27,7 +29,8 @@ const OWNER_METHODS = new Set(["approve_request", "reject_request", "execute_req
 /** Token methods for funding a vault and registering accounts with the demo token. */
 const TOKEN_METHODS = new Set(["storage_deposit", "ft_transfer"]);
 const MAX_GAS = 300_000_000_000_000n;
-const MAX_BODY = 16 * 1024;
+// the named-vault transaction carries the vault code as base64 (274 kB -> about 366 kB)
+const MAX_BODY = 1024 * 1024;
 const MAX_NEAR = 10n * 10n ** 24n;
 const MAX_STORAGE_DEPOSIT = 10n ** 23n; // 0.1 NEAR
 
@@ -42,6 +45,11 @@ if (fixture.network !== "sandbox" || (rpcHost !== "127.0.0.1" && rpcHost !== "lo
 const owner = new Account(fixture.owner_id, new JsonRpcProvider({ url: fixture.rpc_url }), fixture.owner_secret_key as KeyPairString);
 const port = Number(process.env.DEV_SIGNER_PORT ?? 8788);
 const subAccount = new RegExp(`^[a-z0-9_-]+\\.${fixture.owner_id.replace(/\./g, "\\.")}$`);
+const implicitAccount = /^[0-9a-f]{64}$/;
+/** sha256 of the only contract code this signer installs: the build the site publishes (contracts.ts). */
+const PUBLISHED_WASM_SHA256 = createHash("sha256")
+  .update(readFileSync(new URL("../public/contracts/spact_vault-p1.wasm", import.meta.url)))
+  .digest("hex");
 
 type NearAction = ReturnType<typeof actions.transfer>;
 
@@ -64,14 +72,15 @@ function functionCall(params: Record<string, unknown> | undefined, allowed: Set<
 /**
  * Accepts only what the site's owner flows send, in near-connect's action shape:
  * owner methods on the demo vault or an owner-created vault (deposit 0 or 1 yoctoNEAR); storage_deposit and
- * ft_transfer on the demo token; creating a direct sub-account of the owner (CreateAccount, Transfer, AddKey);
- * and a plain NEAR transfer of at most 10 NEAR to the demo vault or such a sub-account.
+ * ft_transfer on the demo token; creating a direct sub-account of the owner (CreateAccount, Transfer, AddKey,
+ * or CreateAccount, Transfer, DeployContract with the published vault code, AddKey); and a plain NEAR transfer of
+ * at most 10 NEAR to the demo vault, such a sub-account or an implicit account.
  */
 function parseSignRequest(body: unknown): { receiverId: string; list: NearAction[] } {
   if (typeof body !== "object" || body === null) throw new Error("body must be an object");
   const { receiverId, actions: list } = body as { receiverId?: unknown; actions?: unknown };
   if (typeof receiverId !== "string") throw new Error("receiverId must be a string");
-  if (!Array.isArray(list) || list.length < 1 || list.length > 3) throw new Error("expected 1 to 3 actions");
+  if (!Array.isArray(list) || list.length < 1 || list.length > 4) throw new Error("expected 1 to 4 actions");
   const typed = list.map((a: unknown) => (a ?? {}) as { type?: unknown; params?: Record<string, unknown> });
   const types = typed.map((a) => a.type).join(",");
 
@@ -84,12 +93,28 @@ function parseSignRequest(body: unknown): { receiverId: string; list: NearAction
       }),
     };
   }
+  if (implicitAccount.test(receiverId)) {
+    if (types !== "Transfer") throw new Error("only a plain transfer to an implicit account");
+    const amount = yocto(typed[0]?.params?.deposit, "transfer");
+    if (amount > MAX_NEAR) throw new Error("transfer too large");
+    return { receiverId, list: [actions.transfer(amount)] };
+  }
   const ownVault = receiverId === fixture.vault_id || subAccount.test(receiverId);
-  if (!ownVault) throw new Error(`receiverId must be ${fixture.vault_id}, the token, or a sub-account of ${fixture.owner_id}`);
+  if (!ownVault) throw new Error(`receiverId must be ${fixture.vault_id}, the token, an implicit account, or a sub-account of ${fixture.owner_id}`);
 
-  if (types === "CreateAccount,Transfer,AddKey") {
+  if (types === "CreateAccount,Transfer,AddKey" || types === "CreateAccount,Transfer,DeployContract,AddKey") {
     if (!subAccount.test(receiverId)) throw new Error("only sub-accounts of the owner can be created");
-    const [, transfer, addKey] = typed;
+    const withCode = typed.length === 4;
+    const [, transfer] = typed;
+    const addKey = typed[typed.length - 1];
+    let deploy: NearAction[] = [];
+    if (withCode) {
+      const code = typed[2]?.params?.code;
+      if (typeof code !== "string") throw new Error("DeployContract code must be base64");
+      const wasm = Buffer.from(code, "base64");
+      if (createHash("sha256").update(wasm).digest("hex") !== PUBLISHED_WASM_SHA256) throw new Error("only the published vault code can be installed");
+      deploy = [actions.deployContract(new Uint8Array(wasm))];
+    }
     const amount = yocto(transfer?.params?.deposit, "transfer");
     if (amount > MAX_NEAR) throw new Error("transfer too large");
     const key = addKey?.params as { publicKey?: unknown; accessKey?: { permission?: unknown } } | undefined;
@@ -106,7 +131,7 @@ function parseSignRequest(body: unknown): { receiverId: string; list: NearAction
       }
       add = actions.addFunctionCallAccessKey(publicKey, p.receiverId, p.methodNames as string[], p.allowance === undefined ? undefined : yocto(p.allowance, "allowance"));
     }
-    return { receiverId, list: [actions.createAccount(), actions.transfer(amount), add] };
+    return { receiverId, list: [actions.createAccount(), actions.transfer(amount), ...deploy, add] };
   }
   if (types === "Transfer") {
     const amount = yocto(typed[0]?.params?.deposit, "transfer");

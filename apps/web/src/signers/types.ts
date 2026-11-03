@@ -1,10 +1,11 @@
 /**
- * The actions an owner's wallet is asked to sign, in the shape near-connect accepts. Contract deploys are
- * not here: the create-vault page deploys with a temporary key of the new account itself (owner/deploy.ts).
+ * The actions an owner's wallet is asked to sign, in the shape near-connect accepts. A contract deploy only
+ * appears when the wallet creates a named vault (owner/actions.ts, ADR-035).
  */
 export type WalletAction =
   | { type: "CreateAccount" }
   | { type: "Transfer"; params: { deposit: string } }
+  | { type: "DeployContract"; params: { code: Uint8Array } }
   | {
       type: "AddKey";
       params: {
