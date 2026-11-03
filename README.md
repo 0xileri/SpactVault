@@ -27,10 +27,10 @@ A wallet key can spend everything. A NEAR function-call key restricts which meth
 | Landing page, owner dashboard and approval page (`apps/web`) | built, 48 unit tests and 25 browser tests on a local chain, including tampered RPC answers, framing, the network switch and the cross-chain review page |
 | Hosted site | live at https://spactvault.xyz (Railway) and https://0xileri.github.io/SpactVault/ (GitHub Pages), both from main, reading the mainnet vault with a switch to the testnet vault |
 | Security Lab report and page (`packages/security-lab`, `?page=security`) | built: 17 of 18 attack cases pass on a local chain, T10 in unit tests only, none uncovered (263 tests in 11 suites, 2026-11-02) |
-| Agent MCP server for Claude Code / Codex (`apps/mcp`) | built, 24 unit tests and 11 tests over stdio on a local chain; run on testnet from Claude Code (paid, held for approval, blocked) |
+| Agent MCP server for Claude Code / Codex (`apps/mcp`) | built, 24 unit tests and 11 tests over stdio on a local chain; run from Claude Code on testnet and **on mainnet with real USDC** (paid, held for approval, blocked) |
 | Local demo with no wallet or testnet needed (`scripts/dev-sandbox.sh`) | works |
 | Testnet deploy script (`scripts/deploy-testnet.sh`) | ran on testnet on 2026-10-25: `vault.spact-ileri2.testnet` |
-| Signing with a real wallet | done on testnet with Meteor Wallet: the owner approved and paid the 25 TUSD demo request on the hosted site. Other wallets untested |
+| Signing with a real wallet | done with Meteor Wallet on testnet (25 TUSD) and on **mainnet** (2 USDC, 2026-11-03): the owner approved and paid the waiting request on the hosted site. Other wallets untested |
 | Telegram alert for the owner (`apps/notifier`) | built, 28 unit tests and 4 tests on a local chain against a mock Bot API; not yet tried with real Telegram |
 | NEAR Intents / 1Click cross-chain route (P1) | vault route, 1Click adapter (`packages/intents`, 14 tests), review page and Telegram alert built and tested on a local chain with a stand-in deposit account and a mock 1Click; **no live 1Click call, not on testnet or mainnet** (the deployed vaults run the earlier code). See DECISIONS ADR-032 |
 
@@ -60,6 +60,14 @@ This runs every suite, then builds `apps/web/public/security-report.json` from t
 | Agent (function-call key for two vault methods only) | [`agent.0xileri.near`](https://nearblocks.io/address/agent.0xileri.near) | [`agent.spact-ileri2.testnet`](https://testnet.nearblocks.io/address/agent.spact-ileri2.testnet) |
 | Token / payee | native USDC / [`api.0xileri.near`](https://nearblocks.io/address/api.0xileri.near) | [`tusd.spact-ileri2.testnet`](https://testnet.nearblocks.io/address/tusd.spact-ileri2.testnet) / [`api.spact-ileri2.testnet`](https://testnet.nearblocks.io/address/api.spact-ileri2.testnet) |
 | Limits | paid at once up to 1 USDC, waits up to 3, 5 a day | paid at once up to 10 TUSD, waits up to 30, 50 a day |
+
+**Mainnet demo payments (2026-11-03),** made by the agent from Claude Code through the MCP server, all to the owner's own payee:
+
+| Request | What happened | Transaction |
+|---|---|---|
+| 0.5 USDC | paid at once (under the 1 USDC instant limit) | [`3ABgwMWy…`](https://nearblocks.io/txns/3ABgwMWyKiS24AYtHSXgzVggekiNx5cb6xi3EucNqiJP) |
+| 2 USDC | waited; the owner approved and paid it with Meteor Wallet | request [`39dMJm5x…`](https://nearblocks.io/txns/39dMJm5xkDyqw5Mdjjm1JoNdLBkPrwwoJnQMPQaNN6HV), approval [`RqphTo2H…`](https://nearblocks.io/txns/RqphTo2Hy9ifsW7Y2PDXFM2A8gtcxu6GHdBuzfcP2oB) |
+| 4 USDC | blocked (over the 3 USDC limit per payment); nothing sent | refused request [`dpwtTTim…`](https://nearblocks.io/txns/dpwtTTimLp3Sq4RJcXpa3S45zcLdUwZ2bABHRKe22Q3) |
 
 On testnet the deploy script made two agent requests: 3 TUSD, paid automatically, and 25 TUSD, which the owner approved and paid from the site with Meteor Wallet. The testnet code hash is from the owner's build; a build on another machine gives a different hash for now (docs/STATUS.md).
 

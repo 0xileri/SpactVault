@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-11-02 (UTC). Network mode: **NEAR mainnet** since 2026-11-01, with a locked vault holding 5 real USDC (see "Mainnet deployment"). The testnet vault (since 2026-10-25) and the local sandbox stay for tests; testnet NEAR and the TUSD test token have no value.
+Last updated 2026-11-03 (UTC). Network mode: **NEAR mainnet** since 2026-11-01, with a locked vault funded with 5 real USDC, of which the three demo payments on 2026-11-03 paid out 2.5 USDC (see "Mainnet deployment"). The testnet vault (since 2026-10-25) and the local sandbox stay for tests; testnet NEAR and the TUSD test token have no value.
 
 ## Milestone: AGENTS.md section 19 steps 1-5
 
@@ -19,10 +19,10 @@ Last updated 2026-11-02 (UTC). Network mode: **NEAR mainnet** since 2026-11-01, 
 |---|---|---|
 | 1 | single owner + agent + one NEP-141 token | local tested (sandbox); deployed on testnet, and on **mainnet with native USDC** (see below) |
 | 2 | policy with auto, daily and per-tx limits, allowlists, pause | local tested |
-| 3 | agent requests via API/MCP; contract rejects unsafe requests | MCP server: local tested (sandbox, over stdio) and **run on testnet from Claude Code** (paid, held for approval, blocked; see below); **API not built** |
-| 4 | auto payment executes with on-chain receipt | local tested (sandbox); on testnet the deploy script's `demo-auto-1` (3 TUSD) was paid by the agent's restricted key |
+| 3 | agent requests via API/MCP; contract rejects unsafe requests | MCP server: local tested (sandbox, over stdio), **run on testnet from Claude Code** (paid, held for approval, blocked) and **run on mainnet from Claude Code on 2026-11-03** (the same three outcomes; see "Mainnet deployment"); **API not built** |
+| 4 | auto payment executes with on-chain receipt | local tested (sandbox); on testnet the deploy script's `demo-auto-1` (3 TUSD) was paid by the agent's restricted key; **mainnet: `agent-mainnet-1` (0.5 USDC) was paid at once** ([`3ABgwMWy…`](https://nearblocks.io/txns/3ABgwMWyKiS24AYtHSXgzVggekiNx5cb6xi3EucNqiJP)) |
 | 5 | larger payment awaits approval; Telegram notice | local tested: the notifier alerts on sandbox, then follows up when paid; **real Telegram delivery untested** (mock Bot API; api.telegram.org unreachable here) |
-| 6 | owner wallet approves the exact request; executes once | local tested in a real browser (sandbox, dev signer); **testnet: the owner approved and paid `demo-approve-1` (25 TUSD) with Meteor Wallet on the hosted site**, and the page showed "Confirmed on chain" (owner's report, 2026-10-25). Other wallets untested |
+| 6 | owner wallet approves the exact request; executes once | local tested in a real browser (sandbox, dev signer); **testnet: the owner approved and paid `demo-approve-1` (25 TUSD) with Meteor Wallet on the hosted site**, and the page showed "Confirmed on chain" (owner's report, 2026-10-25); **mainnet: the owner approved and paid `agent-mainnet-2` (2 USDC) with Meteor Wallet on https://spactvault.xyz** ([`RqphTo2H…`](https://nearblocks.io/txns/RqphTo2Hy9ifsW7Y2PDXFM2A8gtcxu6GHdBuzfcP2oB), 2026-11-03). Other wallets untested |
 | 7 | dashboard | local tested in a real browser (sandbox): balance, budget, open requests and activity match the chain; inconsistent budget data from the RPC is flagged; no tx hashes (no indexer) |
 | 8 | Security Lab, at least 6 negative tests | local tested: generated report and page; 17 of 18 cases pass on a local chain, T10 in unit tests only, none uncovered (2026-11-02, with the P1 route; THREAT_MODEL.md); CI builds the report and publishes it with the site to GitHub Pages from main (ADR-023) |
 | 9 | public app, README, video, submission | public repo; site live at https://spactvault.xyz (Railway) and https://0xileri.github.io/SpactVault/, both built for the mainnet vault, with a landing page and brand (ADR-024, ADR-027); README in progress; video and submission not started |
@@ -69,7 +69,19 @@ Checked on 2026-11-01 with three read-only near-cli commands on the owner's mach
 - **`get_config`:** owner `0xileri.near`, agents `[agent.0xileri.near]`, network `mainnet`, `policy_version` 1, `request_count` 0, `open_approvals` 0, not paused. The view call ran the vault's wasm, so mainnet runs the rustc 1.97 build.
 - **Balance** (`tokens view-ft-balance`): 5 USDC of the native USDC contract above.
 - **Not checked yet:** the policy (`get_policy`), the agent's keys and the vault's code hash. Mainnet is unreachable from the build environment, so everything here comes from the owner's terminal output.
-- **Agent:** the owner registered the MCP server in Claude Code with `SPACT_NETWORK=mainnet`, `ENABLE_MAINNET_TRANSFERS=true` and `SPACT_APPROVAL_URL=https://spactvault.xyz/`. No payment has run yet.
+- **Agent:** the owner registered the MCP server in Claude Code with `SPACT_NETWORK=mainnet`, `ENABLE_MAINNET_TRANSFERS=true` and `SPACT_APPROVAL_URL=https://spactvault.xyz/`.
+
+**Demo payments (2026-11-03).** The owner ran them from Claude Code 2.1.310 on their machine, through the repo's MCP server signing with `agent.0xileri.near`'s restricted key. All three went to `api.0xileri.near`, the owner's own payee account, in native USDC. Results are as the MCP tool and the approval page reported them, with hashes copied from the owner's screenshots and messages. The build environment cannot reach mainnet or nearblocks, so they were not re-read from chain here.
+
+| Request | Amount | Result | Transaction |
+|---|---|---|---|
+| `agent-mainnet-1` | 0.5 USDC (500000) | `AUTO_APPROVED`, `SETTLED`: paid at once, under the 1 USDC instant limit | [`3ABgwMWy…`](https://nearblocks.io/txns/3ABgwMWyKiS24AYtHSXgzVggekiNx5cb6xi3EucNqiJP) |
+| `agent-mainnet-2` | 2 USDC (2000000) | waited for the owner (over the instant limit, within the cap); the owner approved and paid it with Meteor Wallet on https://spactvault.xyz from the review link; `get_payment_status` then reported `SETTLED`, `approved_by: 0xileri.near` | request [`39dMJm5x…`](https://nearblocks.io/txns/39dMJm5xkDyqw5Mdjjm1JoNdLBkPrwwoJnQMPQaNN6HV); approval and payment [`RqphTo2H…`](https://nearblocks.io/txns/RqphTo2Hy9ifsW7Y2PDXFM2A8gtcxu6GHdBuzfcP2oB) |
+| `agent-mainnet-3` | 4 USDC (4000000) | `BLOCKED`, `HARD_CAP_EXCEEDED`: over the 3 USDC limit per payment; nothing stored or sent (`get_payment_status` says not found) | refused request [`dpwtTTim…`](https://nearblocks.io/txns/dpwtTTimLp3Sq4RJcXpa3S45zcLdUwZ2bABHRKe22Q3) |
+
+- **Total moved:** 2.5 USDC from the vault to the owner's own payee account. That should leave 2.5 USDC in the vault and 2.5 USDC of today's 5 USDC budget, neither read from chain here.
+- **What it shows:** the three outcomes on mainnet with real funds. The vault paid the small request on its own, held the larger one until the owner's wallet signed the exact request, and refused the one over the cap.
+- **Hash gap:** `get_payment_status` links only the request's own transaction. The vault stores no later transaction hashes and there is no indexer (ADR-021), so the approval hash came from the approval page.
 
 ## Testnet deployment (2026-10-25)
 
@@ -243,10 +255,6 @@ Agent key (2026-10-24): the agent now signs with a function-call key that reache
 
 ## Next smallest task
 
-Run the three mainnet demo payments through the agent (`agent-mainnet-1` 0.5 USDC, paid; `agent-mainnet-2` 2 USDC, waits for the owner; `agent-mainnet-3` 4 USDC, blocked) and record their transaction hashes under "Mainnet deployment".
-
-Record the `demo-approve-1` approval transaction hash here (testnet).
-
-Record the approval transaction hashes for `demo-approve-1` and `agent-approve-1` here, if the owner has them.
+Record the testnet approval transaction hashes for `demo-approve-1` and `agent-approve-1` here, if the owner has them.
 
 Then, on the owner's machine: with a bot from @BotFather, run the notifier (apps/notifier/README.md) against the testnet vault and check that the alert arrives on the phone.
