@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { explainReason, type PaymentRequest, type ReasonCode, type Status } from "@spact/shared";
+import { explainReason, type CrossChainTerms, type PaymentRequest, type ReasonCode, type Status } from "@spact/shared";
 
 import { assess, buildApproveActions, buildRejectActions, reasonFromError } from "../approval.js";
 import { explorerTxLink, type AppConfig } from "../config.js";
@@ -19,7 +19,7 @@ type Phase =
   | { kind: "done"; action: Action; txHash: string | null; status: Status | null }
   | { kind: "failed"; action: Action; message: string; reason: ReasonCode | null; txHash: string | null };
 
-const FINAL_AFTER_PAY: Status[] = ["SETTLED", "TRANSFER_FAILED"];
+const FINAL_AFTER_PAY: Status[] = ["SETTLED", "TRANSFER_FAILED", "CROSS_CHAIN_PENDING"];
 
 function settledFor(action: Action, executeNow: boolean): (r: PaymentRequest) => boolean {
   if (action === "reject") return (r) => r.status === "DENIED";
@@ -113,12 +113,16 @@ export function ApprovalPage({
           <p className="mt-3 font-display text-4xl font-semibold tracking-tight" data-testid="amount">
             {formatAmount(request.amount, token)}
           </p>
-          <p className="mt-2 text-base text-zinc-600">
-            to{" "}
-            <span className="text-lg font-semibold text-ink" data-testid="recipient">
-              <Mono>{request.recipient}</Mono>
-            </span>
-          </p>
+          {request.cross_chain ? (
+            <CrossChainRoute request={request} terms={request.cross_chain} />
+          ) : (
+            <p className="mt-2 text-base text-zinc-600">
+              to{" "}
+              <span className="text-lg font-semibold text-ink" data-testid="recipient">
+                <Mono>{request.recipient}</Mono>
+              </span>
+            </p>
+          )}
 
           <div className="mt-5 rounded-xl bg-paper p-4" data-testid="reason">
             <p className="text-xs font-medium text-zinc-500">What it is for, in your agent&apos;s words</p>
@@ -131,7 +135,11 @@ export function ApprovalPage({
           </div>
 
           <ul className="mt-5 space-y-1.5 text-sm text-zinc-600">
-            {request.status === "AWAITING_APPROVAL" && tokenPolicy ? (
+            {request.status === "AWAITING_APPROVAL" && request.cross_chain ? (
+              <li data-testid="why-waiting">
+                It is waiting for you because cross-chain payments always do, whatever the amount: the vault cannot check what 1Click does with them.
+              </li>
+            ) : request.status === "AWAITING_APPROVAL" && tokenPolicy ? (
               <li data-testid="why-waiting">
                 It is waiting for you because it is over your {formatAmount(tokenPolicy.auto_limit, token)} instant limit.
               </li>
@@ -164,6 +172,20 @@ export function ApprovalPage({
               <Field label="Fingerprint">
                 <Mono>{request.request_hash}</Mono>
               </Field>
+              {request.cross_chain ? (
+                <>
+                  <Field label="Destination asset (1Click id)">
+                    <Mono>{request.cross_chain.destination_asset}</Mono>
+                  </Field>
+                  <Field label="Minimum output in raw units">
+                    <Mono>{request.cross_chain.min_amount_out}</Mono>
+                  </Field>
+                  <Field label="Quote fingerprint">
+                    <Mono>{request.cross_chain.quote_hash}</Mono>
+                  </Field>
+                  <Field label="Quote deadline">{formatUtc(request.cross_chain.quote_expires_at_ns)}</Field>
+                </>
+              ) : null}
             </dl>
           </details>
         </Card>
@@ -256,6 +278,50 @@ export function ApprovalPage({
   );
 }
 
+/**
+ * Who gets paid on a 1Click route: two parties, shown apart (Security Lab T14). The tokens go to
+ * 1Click's deposit address on NEAR; 1Click is trusted to pay the final recipient on the other chain.
+ * Both are in the hash the owner signs, so neither can be swapped after this page shows them.
+ */
+function CrossChainRoute({ request, terms }: { request: PaymentRequest; terms: CrossChainTerms }) {
+  return (
+    <div className="mt-3 space-y-3" data-testid="cross-chain">
+      <p className="text-base text-zinc-600">
+        to{" "}
+        <span className="text-lg font-semibold text-ink" data-testid="cross-chain-recipient">
+          <Mono>{terms.destination_recipient}</Mono>
+        </span>{" "}
+        on <span className="font-semibold text-ink" data-testid="cross-chain-chain">{terms.destination_chain}</span>, through NEAR Intents 1Click
+      </p>
+      <dl className="divide-y divide-line rounded-xl border border-line">
+        <div className="grid gap-1 p-3 sm:grid-cols-[13rem_1fr] sm:gap-4">
+          <dt className="text-sm text-zinc-500">1Click deposit address on NEAR (receives the tokens)</dt>
+          <dd className="min-w-0 text-sm text-ink" data-testid="recipient">
+            <Mono>{request.recipient}</Mono>
+          </dd>
+        </div>
+        <div className="grid gap-1 p-3 sm:grid-cols-[13rem_1fr] sm:gap-4">
+          <dt className="text-sm text-zinc-500">Final recipient on {terms.destination_chain} (1Click pays them)</dt>
+          <dd className="min-w-0 text-sm text-ink">
+            <Mono>{terms.destination_recipient}</Mono>
+          </dd>
+        </div>
+        <div className="grid gap-1 p-3 sm:grid-cols-[13rem_1fr] sm:gap-4">
+          <dt className="text-sm text-zinc-500">Refunds go to</dt>
+          <dd className="min-w-0 text-sm text-ink" data-testid="cross-chain-refund">
+            <Mono>{terms.refund_to}</Mono>
+          </dd>
+        </div>
+      </dl>
+      <p className="text-xs leading-relaxed text-zinc-500" data-testid="cross-chain-trust">
+        The vault checks one thing: it sends exactly this amount to exactly this deposit address, before the quote&apos;s deadline. After that it
+        is up to 1Click. The vault cannot see delivery on {terms.destination_chain}, and a refund 1Click reports does not give your daily budget
+        back.
+      </p>
+    </div>
+  );
+}
+
 function TxLink({ config, txHash }: { config: AppConfig; txHash: string | null }) {
   if (!txHash) return null;
   const href = explorerTxLink(config, txHash);
@@ -288,7 +354,9 @@ function PhaseView({ phase, config }: { phase: Phase; config: AppConfig }) {
     case "done": {
       const s = phase.status;
       const title =
-        s === "SETTLED"
+        s === "CROSS_CHAIN_PENDING"
+          ? "Done: approved and sent to the 1Click deposit address. Delivery on the other chain is up to 1Click."
+          : s === "SETTLED"
           ? "Done: approved and paid. The money has been sent."
           : s === "APPROVED"
             ? "Done: approved. Your agent can now send it."
@@ -297,7 +365,7 @@ function PhaseView({ phase, config }: { phase: Phase; config: AppConfig }) {
               : s === "TRANSFER_FAILED"
                 ? "Approved, but the transfer failed, so nothing was spent."
                 : `Sent, but not confirmed yet${s ? ` (the vault says: ${statusLabel(s)})` : ""}. Refresh in a moment.`;
-      const tone = s === "SETTLED" || s === "APPROVED" || s === "DENIED" ? "good" : "warn";
+      const tone = s === "SETTLED" || s === "CROSS_CHAIN_PENDING" || s === "APPROVED" || s === "DENIED" ? "good" : "warn";
       return (
         <Notice tone={tone} title={title}>
           <TxLink config={config} txHash={phase.txHash} />

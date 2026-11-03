@@ -38,6 +38,7 @@ const STATUS_TONE: Record<Status, Tone> = {
   TRANSFER_PENDING: "info",
   SETTLED: "good",
   TRANSFER_FAILED: "bad",
+  CROSS_CHAIN_PENDING: "info",
 };
 
 const STATUS_LABEL: Record<Status, string> = {
@@ -49,6 +50,7 @@ const STATUS_LABEL: Record<Status, string> = {
   TRANSFER_PENDING: "Sending",
   SETTLED: "Paid",
   TRANSFER_FAILED: "Failed",
+  CROSS_CHAIN_PENDING: "Sent to 1Click",
 };
 
 export function StatusBadge({ status }: { status: Status }) {

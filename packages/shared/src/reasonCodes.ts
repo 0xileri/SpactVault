@@ -4,7 +4,7 @@
  */
 export const REASON_CODES = {
   AUTO_WITHIN_POLICY: "Within the auto-approval limit and today's budget.",
-  REQUIRES_OWNER_APPROVAL: "Above the auto-approval limit. The owner must approve this exact payment.",
+  REQUIRES_OWNER_APPROVAL: "Above the auto-approval limit, or a cross-chain payment. The owner must approve this exact payment.",
   OWNER_APPROVED: "The owner approved this exact payment with their wallet.",
   OWNER_DENIED: "The owner rejected this payment.",
   REQUEST_EXPIRED: "The request expired before it was approved or executed.",
@@ -37,6 +37,11 @@ export const REASON_CODES = {
   INVALID_CONFIG: "The vault configuration is invalid.",
   INSUFFICIENT_GAS: "Attach at least 50 Tgas.",
   LEDGER_INVARIANT: "Internal accounting check failed. Nothing was changed.",
+  ROUTE_NOT_ALLOWED: "This cross-chain route (token, chain and asset) is not on the owner's list.",
+  INVALID_QUOTE: "The 1Click quote terms are malformed, or would send funds or refunds somewhere unsafe.",
+  QUOTE_EXPIRED: "The 1Click quote is at or near its deadline. Get a new quote.",
+  EXTERNAL_SETTLEMENT_PENDING: "Sent to the 1Click deposit address on NEAR. Delivery on the other chain is reported by 1Click, not checked by the vault.",
+  REFUND_UNVERIFIED: "1Click reports a refund, but nothing has verified it reached the vault. The budget stays spent.",
 } as const;
 
 export type ReasonCode = keyof typeof REASON_CODES;

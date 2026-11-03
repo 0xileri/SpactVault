@@ -19,6 +19,7 @@ function request(id: string, status: PaymentRequest["status"], expiresAtNs = 10n
     created_at_ns: "0",
     expires_at_ns: expiresAtNs.toString(),
     policy_version: 1,
+    cross_chain: null,
     request_hash: "a".repeat(64),
     status,
     reason_code: "AUTO_WITHIN_POLICY",

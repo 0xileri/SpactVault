@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useState, type ReactNode } from "reac
 import type { FtMetadata, PaymentRequest } from "@spact/shared";
 
 import { explorerAccountLink, type AppConfig } from "../config.js";
-import { budgetResetNs, isLapsed, outcomeLine, usedPercent, waitingForOwner, type TokenSummary } from "../dashboard.js";
+import { budgetResetNs, isLapsed, outcomeLine, payeeLabel, usedPercent, waitingForOwner, type TokenSummary } from "../dashboard.js";
 import { errorMessage, formatAmount, formatRelative, formatUtc } from "../format.js";
 import { listRequests, loadDashboard, type DashboardSnapshot } from "../near/vault.js";
 import { useLink } from "../network.js";
@@ -132,7 +132,7 @@ function ActivityList({ requests, metadataFor, nowNs }: ActivityProps) {
             <span>{formatUtc(r.created_at_ns)}</span>
           </div>
           <p className="mt-2 text-sm">
-            <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Mono>{r.recipient}</Mono>
+            <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Mono>{payeeLabel(r)}</Mono>
             <Note request={r} />
           </p>
           <p className="mt-2 text-sm text-zinc-600">{outcomeLine(r, nowNs)}</p>
@@ -165,7 +165,7 @@ function ActivityTable({ requests, metadataFor, nowNs }: ActivityProps) {
             <tr key={r.request_id} className="border-b border-zinc-50 align-top" data-request={r.request_id}>
               <td className="px-6 py-3 whitespace-nowrap text-zinc-600">{formatUtc(r.created_at_ns).replace(" UTC", "")}</td>
               <td className="px-2 py-3">
-                <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Mono>{r.recipient}</Mono>
+                <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Mono>{payeeLabel(r)}</Mono>
                 <Note request={r} />
               </td>
               <td className="px-2 py-3">
@@ -298,7 +298,7 @@ export function Dashboard({ config }: { config: AppConfig }) {
                 >
                   <span className="min-w-0">
                     <span className="block text-base">
-                      <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Mono>{r.recipient}</Mono>
+                      <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Mono>{payeeLabel(r)}</Mono>
                     </span>
                     {r.reason ? <span className="mt-0.5 block text-sm text-zinc-600">for &ldquo;{r.reason}&rdquo;</span> : null}
                     <span className="mt-1 block text-xs text-zinc-500">

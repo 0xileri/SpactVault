@@ -48,6 +48,25 @@ pub fn policy(recipients: &[&AccountId], token: &AccountId) -> Value {
     })
 }
 
+/// The 1Click route the cross-chain tests enable: TUSD out of the vault, USDC on Solana to one payee.
+/// Asset id and payee are illustrative; nothing in the sandbox talks to 1Click.
+pub const SOL: &str = "sol";
+pub const SOL_USDC: &str = "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near";
+pub const SOL_PAYEE: &str = "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV";
+pub const QUOTE_HASH: &str = "6327245c3a45d3d9ea72b70fbb671926e7b80f63d311bfd73dde876d5df02b26";
+
+/// [`policy`] plus the allowlisted 1Click route.
+pub fn cross_chain_policy(recipients: &[&AccountId], token: &AccountId) -> Value {
+    let mut p = policy(recipients, token);
+    p["cross_chain"] = json!([{
+        "token": token,
+        "destination_chain": SOL,
+        "destination_asset": SOL_USDC,
+        "recipients": [SOL_PAYEE],
+    }]);
+    p
+}
+
 /// Creates `name.<root>` with its own random key. Without `.keys(...)`, near-workspaces gives every
 /// subaccount the same deterministic key, which would let any one of them sign as the others.
 pub async fn account(root: &Account, name: &str) -> anyhow::Result<Account> {
@@ -186,6 +205,68 @@ impl Deployment {
             .await?
             .into_result()?;
         Ok(Account::from_secret_key(self.agent.id().clone(), key, &self.worker))
+    }
+
+    /// The owner allowlists the 1Click route (a policy change, so the version goes up).
+    pub async fn enable_cross_chain(&self) -> anyhow::Result<()> {
+        self.owner
+            .call(self.vault.id(), "set_policy")
+            .args_json(json!({ "policy": cross_chain_policy(&[self.api.id(), self.unregistered.id()], self.token.id()) }))
+            .deposit(ONE_YOCTO)
+            .transact()
+            .await?
+            .into_result()?;
+        Ok(())
+    }
+
+    /// A stand-in for a 1Click deposit account on NEAR, registered with the token so it can receive it.
+    pub async fn deposit_account(&self, name: &str) -> anyhow::Result<Account> {
+        let deposit = account(&self.worker.root_account()?, name).await?;
+        self.owner
+            .call(self.token.id(), "storage_deposit")
+            .args_json(json!({ "account_id": deposit.id() }))
+            .deposit(NearToken::from_millinear(10))
+            .transact()
+            .await?
+            .into_result()?;
+        Ok(deposit)
+    }
+
+    pub async fn now_ns(&self) -> anyhow::Result<u64> {
+        Ok(self.worker.view_block().await?.timestamp())
+    }
+
+    /// `request_cross_chain_payment` as the agent would file it from a 1Click quote.
+    pub async fn request_cross_chain(
+        &self,
+        signer: &Account,
+        id: &str,
+        amount: u128,
+        deposit: &AccountId,
+        payee: &str,
+        quote_expires_at_ns: u64,
+    ) -> anyhow::Result<ExecutionFinalResult> {
+        Ok(signer
+            .call(self.vault.id(), "request_cross_chain_payment")
+            .args_json(json!({
+                "request_id": id,
+                "token": self.token.id(),
+                "amount": amount.to_string(),
+                "deposit_account": deposit,
+                "reason": "Invoice 42, paid in USDC on Solana",
+                "terms": {
+                    "destination_chain": SOL,
+                    "destination_asset": SOL_USDC,
+                    "destination_recipient": payee,
+                    "refund_to": self.vault.id(),
+                    "min_amount_out": (amount * 98 / 100).to_string(),
+                    "quote_hash": QUOTE_HASH,
+                    "quote_expires_at_ns": quote_expires_at_ns.to_string(),
+                },
+            }))
+            .gas(AGENT_GAS)
+            .transact()
+            .await?)
     }
 
     pub async fn get_request(&self, id: &str) -> anyhow::Result<Value> {

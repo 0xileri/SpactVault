@@ -51,6 +51,7 @@ fn policy() -> Policy {
         max_open_approvals: 5,
         max_requests_per_day: 50,
         approval_ttl_sec: TTL_SEC,
+        cross_chain: vec![],
     }
 }
 
@@ -770,6 +771,7 @@ fn digest_matches_independent_test_vector() {
         created_at_ns: U64(0),
         expires_at_ns: U64(1_762_000_000_000_000_000),
         policy_version: 1,
+        cross_chain: None,
         request_hash: String::new(),
         status: Status::AwaitingApproval,
         reason_code: ReasonCode::RequiresOwnerApproval,
@@ -783,5 +785,372 @@ fn digest_matches_independent_test_vector() {
     assert_eq!(
         request_hash("sandbox", "vault.test.near", &req),
         "2d4708a7e377bb80a417f78393fea4ac8c40e2a4a2710b0fc713971a7804186a"
+    );
+}
+
+// ------------------------------------------------------------------ cross-chain route (P1)
+//
+// A 1Click route sends tokens to a quote's deposit account on NEAR; 1Click is trusted to deliver
+// on the other chain. The vault binds the deposit account and the destination tuple into the hash
+// the owner approves, enforces the quote's deadline and never auto-pays (AGENTS.md section 8).
+
+const SOL: &str = "sol";
+const SOL_USDC: &str = "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near";
+const PAYEE: &str = "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV";
+const QUOTE_HASH: &str = "6327245c3a45d3d9ea72b70fbb671926e7b80f63d311bfd73dde876d5df02b26";
+/// The quote's deadline in these tests: 30 minutes after NOW, well inside the 1 hour approval TTL.
+const QUOTE_DEADLINE: u64 = NOW + 1800 * NS_PER_SEC;
+const MARGIN: u64 = QUOTE_SAFETY_MARGIN_SEC * NS_PER_SEC;
+
+fn deposit() -> AccountId {
+    acc("deposit.test.near")
+}
+
+fn xc_route() -> CrossChainRoute {
+    CrossChainRoute {
+        token: token(),
+        destination_chain: SOL.into(),
+        destination_asset: SOL_USDC.into(),
+        recipients: vec![PAYEE.into()],
+    }
+}
+
+fn xc_setup() -> Vault {
+    set_ctx(vault(), 0, NOW);
+    let mut p = policy();
+    p.cross_chain = vec![xc_route()];
+    Vault::new(owner(), vec![agent()], "sandbox".into(), p)
+}
+
+fn terms() -> CrossChainTerms {
+    CrossChainTerms {
+        destination_chain: SOL.into(),
+        destination_asset: SOL_USDC.into(),
+        destination_recipient: PAYEE.into(),
+        refund_to: vault(),
+        min_amount_out: U128(4_900_000),
+        quote_hash: QUOTE_HASH.into(),
+        quote_expires_at_ns: U64(QUOTE_DEADLINE),
+    }
+}
+
+fn xc_request_with(
+    v: &mut Vault,
+    id: &str,
+    amount: u128,
+    deposit_account: AccountId,
+    t: CrossChainTerms,
+) -> PaymentOutcome {
+    set_ctx(agent(), 0, NOW);
+    v.request_cross_chain_payment(
+        id.into(),
+        token(),
+        U128(amount),
+        deposit_account,
+        "pay invoice on solana".into(),
+        t,
+    )
+}
+
+fn xc_request(v: &mut Vault, id: &str, amount: u128) -> PaymentOutcome {
+    xc_request_with(v, id, amount, deposit(), terms())
+}
+
+fn assert_blocked(o: &PaymentOutcome, code: ReasonCode) {
+    assert_eq!((o.status, o.reason_code), (Status::Blocked, code));
+    assert_eq!(o.request_hash, None);
+}
+
+#[test]
+fn cross_chain_route_is_off_unless_the_policy_lists_it() {
+    let mut v = setup();
+    let o = xc_request(&mut v, "x1", 5 * UNIT);
+    assert_blocked(&o, ReasonCode::RouteNotAllowed);
+    assert!(v.get_request("x1".into()).is_none());
+}
+
+#[test]
+fn t12_cross_chain_destination_must_be_allowlisted() {
+    let mut v = xc_setup();
+    let mut other_asset = terms();
+    other_asset.destination_asset = "nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near".into();
+    assert_blocked(
+        &xc_request_with(&mut v, "x1", 5 * UNIT, deposit(), other_asset),
+        ReasonCode::RouteNotAllowed,
+    );
+    let mut other_chain = terms();
+    other_chain.destination_chain = "eth".into();
+    assert_blocked(
+        &xc_request_with(&mut v, "x2", 5 * UNIT, deposit(), other_chain),
+        ReasonCode::RouteNotAllowed,
+    );
+    let mut other_payee = terms();
+    other_payee.destination_recipient = "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin".into();
+    assert_blocked(
+        &xc_request_with(&mut v, "x3", 5 * UNIT, deposit(), other_payee),
+        ReasonCode::RecipientNotAllowed,
+    );
+    // the route's limits are the token's limits
+    assert_blocked(&xc_request(&mut v, "x4", 31 * UNIT), ReasonCode::HardCapExceeded);
+    assert_eq!(v.get_config().request_count, 0, "blocked requests are not stored");
+}
+
+#[test]
+fn t14_cross_chain_payment_waits_for_the_owner_even_under_the_auto_limit() {
+    let mut v = xc_setup();
+    // 1 TUSD is under the 10 TUSD auto limit, which only applies to direct NEAR payments
+    let o = xc_request(&mut v, "x1", UNIT);
+    assert_eq!((o.status, o.reason_code), (Status::AwaitingApproval, ReasonCode::RequiresOwnerApproval));
+    assert!(get_created_receipts().is_empty(), "no transfer before the owner approves");
+    let b = budget(&v, DAY);
+    assert_eq!((b.pending.0, b.executed.0), (0, 0));
+    assert_eq!(v.get_config().open_approvals, 1);
+}
+
+#[test]
+fn t14_deposit_account_and_final_payee_are_stored_and_hashed_separately() {
+    let mut v = xc_setup();
+    xc_request(&mut v, "x1", 5 * UNIT);
+    let stored = v.get_request("x1".into()).unwrap();
+    assert_eq!(stored.route, Route::OneClickOriginNear);
+    assert_eq!(stored.recipient, deposit(), "tokens go to the quote's deposit account on NEAR");
+    let t = stored.cross_chain.clone().expect("cross-chain terms are stored");
+    assert_eq!(t.destination_recipient, PAYEE, "the final payee is kept apart from the deposit account");
+    assert_eq!(t.refund_to, vault());
+
+    // every route term is in the hash the owner approves
+    let hash = |f: &dyn Fn(&mut PaymentRequest)| {
+        let mut r = stored.clone();
+        f(&mut r);
+        request_hash("sandbox", "vault.test.near", &r)
+    };
+    let mutations: [&dyn Fn(&mut PaymentRequest); 7] = [
+        &|r| r.recipient = mallory(),
+        &|r| {
+            r.cross_chain.as_mut().unwrap().destination_recipient =
+                "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin".into()
+        },
+        &|r| r.cross_chain.as_mut().unwrap().destination_asset = "nep141:other.near".into(),
+        &|r| r.cross_chain.as_mut().unwrap().destination_chain = "eth".into(),
+        &|r| r.cross_chain.as_mut().unwrap().min_amount_out = U128(1),
+        &|r| r.cross_chain.as_mut().unwrap().quote_hash = "0".repeat(64),
+        &|r| r.cross_chain.as_mut().unwrap().quote_expires_at_ns = U64(QUOTE_DEADLINE + 1),
+    ];
+    for m in mutations {
+        assert_ne!(hash(m), stored.request_hash);
+    }
+    assert_eq!(approve(&mut v, "x1").status, Status::Approved);
+}
+
+#[test]
+#[should_panic(expected = "HASH_MISMATCH")]
+fn t14_approval_of_a_swapped_deposit_account_fails() {
+    // The page showed a deposit account the agent (or a lying RPC) substituted.
+    let mut v = xc_setup();
+    xc_request(&mut v, "x1", 5 * UNIT);
+    let mut shown = v.get_request("x1".into()).unwrap();
+    shown.recipient = mallory();
+    let shown_hash = request_hash("sandbox", "vault.test.near", &shown);
+    set_ctx(owner(), 1, NOW);
+    v.approve_request("x1".into(), shown_hash);
+}
+
+#[test]
+#[should_panic(expected = "HASH_MISMATCH")]
+fn t14_approval_of_a_swapped_final_payee_fails() {
+    let mut v = xc_setup();
+    xc_request(&mut v, "x1", 5 * UNIT);
+    let mut shown = v.get_request("x1".into()).unwrap();
+    shown.cross_chain.as_mut().unwrap().destination_recipient =
+        "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin".into();
+    let shown_hash = request_hash("sandbox", "vault.test.near", &shown);
+    set_ctx(owner(), 1, NOW);
+    v.approve_request("x1".into(), shown_hash);
+}
+
+#[test]
+fn t14_quote_terms_that_could_redirect_funds_are_refused() {
+    let mut v = xc_setup();
+    let with = |f: fn(&mut CrossChainTerms)| {
+        let mut t = terms();
+        f(&mut t);
+        t
+    };
+    let cases: Vec<(&str, AccountId, CrossChainTerms)> = vec![
+        ("refund elsewhere", deposit(), with(|t| t.refund_to = "mallory.test.near".parse().unwrap())),
+        ("deposit is the vault", vault(), terms()),
+        ("deposit is the owner", owner(), terms()),
+        ("deposit is the token", token(), terms()),
+        ("deposit is the agent", agent(), terms()),
+        ("no minimum output", deposit(), with(|t| t.min_amount_out = U128(0))),
+        ("quote hash not sha256 hex", deposit(), with(|t| t.quote_hash = "XYZ".into())),
+        ("uppercase quote hash", deposit(), with(|t| t.quote_hash = QUOTE_HASH.to_uppercase())),
+        ("whitespace in payee", deposit(), with(|t| t.destination_recipient = format!(" {PAYEE}"))),
+        ("look-alike payee", deposit(), with(|t| t.destination_recipient = PAYEE.replace('C', "\u{0421}"))),
+        ("bad chain name", deposit(), with(|t| t.destination_chain = "Sol".into())),
+    ];
+    for (i, (what, dep, t)) in cases.into_iter().enumerate() {
+        let o = xc_request_with(&mut v, &format!("bad{i}"), 5 * UNIT, dep, t);
+        assert_eq!(o.reason_code, ReasonCode::InvalidQuote, "{what}");
+        assert_eq!(o.status, Status::Blocked, "{what}");
+    }
+    assert_eq!(v.get_config().request_count, 0);
+}
+
+#[test]
+fn t07_quote_too_close_to_its_deadline_is_refused() {
+    let mut v = xc_setup();
+    let mut t = terms();
+    t.quote_expires_at_ns = U64(NOW + MARGIN);
+    assert_blocked(&xc_request_with(&mut v, "x1", 5 * UNIT, deposit(), t), ReasonCode::QuoteExpired);
+}
+
+#[test]
+fn cross_chain_request_expires_before_its_quote() {
+    let mut v = xc_setup();
+    xc_request(&mut v, "x1", 5 * UNIT);
+    let r = v.get_request("x1".into()).unwrap();
+    // the quote ends before the approval TTL would, so the request ends a margin before the quote
+    assert_eq!(r.expires_at_ns.0, QUOTE_DEADLINE - MARGIN);
+    assert!(r.expires_at_ns.0 < NOW + u64::from(TTL_SEC) * NS_PER_SEC);
+}
+
+#[test]
+#[should_panic(expected = "QUOTE_EXPIRED")]
+fn t07_expired_quote_cannot_be_approved() {
+    let mut v = xc_setup();
+    xc_request(&mut v, "x1", 5 * UNIT);
+    let hash = v.get_request("x1".into()).unwrap().request_hash;
+    set_ctx(owner(), 1, QUOTE_DEADLINE - MARGIN / 2);
+    v.approve_request("x1".into(), hash);
+}
+
+#[test]
+#[should_panic(expected = "QUOTE_EXPIRED")]
+fn t07_expired_quote_cannot_execute() {
+    let mut v = xc_setup();
+    xc_request(&mut v, "x1", 5 * UNIT);
+    approve(&mut v, "x1");
+    set_ctx(agent(), 0, QUOTE_DEADLINE - MARGIN / 2);
+    v.execute_request("x1".into()).detach();
+}
+
+#[test]
+fn t13_cross_chain_deposit_stays_spent_whatever_happens_next() {
+    let mut v = xc_setup();
+    xc_request(&mut v, "x1", 5 * UNIT);
+    approve(&mut v, "x1");
+    set_ctx(agent(), 0, NOW);
+    v.execute_request("x1".into()).detach();
+
+    // exactly one ft_transfer, to the deposit account, never to the final payee
+    let receipts = get_created_receipts();
+    assert_eq!(receipts[0].receiver_id, token());
+    match &receipts[0].actions[0] {
+        MockAction::FunctionCallWeight { method_name, args, .. } => {
+            assert_eq!(method_name, b"ft_transfer");
+            let args: near_sdk::serde_json::Value = near_sdk::serde_json::from_slice(args).unwrap();
+            assert_eq!(args["receiver_id"], "deposit.test.near");
+            assert_eq!(args["amount"], (5 * UNIT).to_string());
+        }
+        other => panic!("unexpected action {other:?}"),
+    }
+    assert_eq!(budget(&v, DAY).pending.0, 5 * UNIT);
+
+    let o = resolve(&mut v, "x1", true, NOW);
+    assert_eq!((o.status, o.reason_code), (Status::CrossChainPending, ReasonCode::ExternalSettlementPending));
+    let b = budget(&v, DAY);
+    assert_eq!((b.pending.0, b.executed.0, b.available.0), (0, 5 * UNIT, 45 * UNIT));
+
+    // Late or repeated callbacks, a failure report included, change nothing. No vault method takes
+    // a 1Click status, so a reported refund has no way to restore budget either (I9).
+    resolve(&mut v, "x1", false, NOW);
+    resolve(&mut v, "x1", true, NOW);
+    let b = budget(&v, DAY);
+    assert_eq!((b.pending.0, b.executed.0, b.available.0), (0, 5 * UNIT, 45 * UNIT));
+    assert_eq!(v.get_request("x1".into()).unwrap().status, Status::CrossChainPending);
+    assert_eq!(v.get_config().open_approvals, 0);
+}
+
+#[test]
+fn t08_failed_cross_chain_deposit_releases_its_reservation_once() {
+    // A definitive on-chain failure (e.g. the deposit account is not registered with the token)
+    // means the tokens never left, so the reservation is released, once.
+    let mut v = xc_setup();
+    xc_request(&mut v, "x1", 5 * UNIT);
+    approve(&mut v, "x1");
+    set_ctx(agent(), 0, NOW);
+    v.execute_request("x1".into()).detach();
+    let o = resolve(&mut v, "x1", false, NOW);
+    assert_eq!((o.status, o.reason_code), (Status::TransferFailed, ReasonCode::SourceTransferFailed));
+    resolve(&mut v, "x1", true, NOW);
+    let b = budget(&v, DAY);
+    assert_eq!((b.pending.0, b.executed.0, b.available.0), (0, 0, 50 * UNIT));
+}
+
+#[test]
+fn policy_validation_rejects_unsafe_cross_chain_routes() {
+    let v = vault();
+    let with = |f: fn(&mut Policy)| {
+        let mut p = policy();
+        p.cross_chain = vec![xc_route()];
+        f(&mut p);
+        validate_policy(&p, &v)
+    };
+    assert!(with(|_| {}).is_ok());
+    assert!(with(|p| p.cross_chain[0].token = "other.test.near".parse().unwrap()).is_err());
+    assert!(with(|p| p.cross_chain[0].recipients.clear()).is_err());
+    assert!(with(|p| p.cross_chain[0].recipients.push(PAYEE.into())).is_err());
+    assert!(with(|p| p.cross_chain[0].recipients[0] = "has space".into()).is_err());
+    assert!(with(|p| p.cross_chain[0].destination_chain = "SOL".into()).is_err());
+    assert!(with(|p| p.cross_chain[0].destination_asset = String::new()).is_err());
+    assert!(with(|p| p.cross_chain.push(xc_route())).is_err());
+    assert!(with(|p| {
+        for i in 0..MAX_CROSS_CHAIN_ROUTES {
+            let mut r = xc_route();
+            r.destination_asset = format!("nep141:asset-{i}.near");
+            p.cross_chain.push(r);
+        }
+    })
+    .is_err());
+}
+
+/// Independent vector computed with Python's hashlib (recorded in docs/INTEGRATIONS.md). The TS
+/// client in packages/shared checks the same bytes and hash. Direct requests keep their old vector.
+#[test]
+fn digest_matches_independent_cross_chain_test_vector() {
+    let req = PaymentRequest {
+        request_id: "xc-001".into(),
+        agent_id: agent(),
+        route: Route::OneClickOriginNear,
+        token: token(),
+        amount: U128(5_000_000),
+        recipient: deposit(),
+        reason: "pay invoice 42 on solana".into(),
+        created_at_ns: U64(0),
+        expires_at_ns: U64(1_762_000_000_000_000_000),
+        policy_version: 1,
+        cross_chain: Some(CrossChainTerms {
+            destination_chain: SOL.into(),
+            destination_asset: SOL_USDC.into(),
+            destination_recipient: PAYEE.into(),
+            refund_to: vault(),
+            min_amount_out: U128(4_900_000),
+            quote_hash: QUOTE_HASH.into(),
+            quote_expires_at_ns: U64(1_762_000_600_000_000_000),
+        }),
+        request_hash: String::new(),
+        status: Status::AwaitingApproval,
+        reason_code: ReasonCode::RequiresOwnerApproval,
+        approved_by: None,
+        reserved_day: None,
+        updated_at_ns: U64(0),
+    };
+    set_ctx(vault(), 0, NOW);
+    let bytes = encode_request("sandbox", "vault.test.near", &req);
+    assert_eq!(bytes.len(), 410);
+    assert_eq!(
+        request_hash("sandbox", "vault.test.near", &req),
+        "04940b54db8f43847767b0169b57a67f80ec6e8851fe470516c72a3c178bebb2"
     );
 }

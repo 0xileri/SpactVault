@@ -13,6 +13,11 @@ export interface Fixture {
   api_id: string;
   mallory_id: string;
   demo_request_id: string;
+  /** A ONE_CLICK_ORIGIN_NEAR request the fixture files, waiting for the owner (P1). */
+  cross_chain_request_id: string;
+  /** Stands in for its 1Click deposit account on NEAR. */
+  deposit_id: string;
+  cross_chain_payee: string;
 }
 
 export function fixture(): Fixture {

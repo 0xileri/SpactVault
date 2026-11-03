@@ -20,6 +20,7 @@ export function request(overrides: Partial<PaymentRequest> = {}): PaymentRequest
     created_at_ns: (NOW - 60_000_000_000n).toString(),
     expires_at_ns: (NOW + 3_600_000_000_000n).toString(),
     policy_version: 1,
+    cross_chain: null,
     request_hash: "a".repeat(64),
     status: "AWAITING_APPROVAL",
     reason_code: "REQUIRES_OWNER_APPROVAL",

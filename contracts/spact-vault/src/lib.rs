@@ -3,6 +3,7 @@
 //! Holds NEP-141 tokens for an owner and lets designated agent accounts request payments.
 //! Every outgoing payment passes on-chain policy checks. Payments above the auto limit need the
 //! owner to approve the exact stored request (by its hash) with a full-access-key transaction.
+//! Cross-chain payments through a 1Click quote (P1) always need that approval, whatever the amount.
 //!
 //! Unaudited hackathon prototype. See AGENTS.md and docs/THREAT_MODEL.md.
 
@@ -179,6 +180,9 @@ impl Vault {
             if req.policy_version != self.policy_version {
                 fail(ReasonCode::PolicyVersionChanged, "policy changed since request");
             }
+            if quote_too_late(req, now) {
+                fail(ReasonCode::QuoteExpired, "the 1Click quote is too close to its deadline");
+            }
             if now > req.expires_at_ns.0 {
                 fail(ReasonCode::RequestExpired, "request expired");
             }
@@ -252,7 +256,13 @@ impl Vault {
         if env::prepaid_gas() < MIN_GAS_FOR_DISPATCH {
             fail(ReasonCode::InsufficientGas, "attach at least 50 Tgas");
         }
-        if let Err(code) = self.check_new_request(&request_id, &token, amount.0, &recipient, &reason) {
+        if let Err(code) = self.check_new_request(&request_id, &token, amount.0, &reason, |p| {
+            if p.allows_recipient(&recipient) {
+                Ok(())
+            } else {
+                Err(ReasonCode::RecipientNotAllowed)
+            }
+        }) {
             return PromiseOrValue::Value(blocked(&request_id, &agent_id, code));
         }
         let token_policy = self.policy.token_policy(&token).expect("checked above");
@@ -281,6 +291,7 @@ impl Vault {
             created_at_ns: U64(now),
             expires_at_ns: U64(now + ttl_ns),
             policy_version: self.policy_version,
+            cross_chain: None,
             request_hash: String::new(),
             status: Status::AwaitingApproval,
             reason_code: ReasonCode::RequiresOwnerApproval,
@@ -303,6 +314,72 @@ impl Vault {
         }
     }
 
+    /// Asks for a cross-chain payment through a 1Click quote (P1, AGENTS.md section 8).
+    ///
+    /// `deposit_account` is the quote's deposit address on NEAR, and `terms` are the quote's
+    /// destination tuple. The vault checks them against the owner's `cross_chain` allowlist and
+    /// stores the request as AWAITING_APPROVAL whatever the amount: a cross-chain payment never
+    /// leaves without the owner approving this exact deposit account and destination, because the
+    /// vault cannot verify what 1Click does with the deposit. Blocked requests are logged, not stored.
+    pub fn request_cross_chain_payment(
+        &mut self,
+        request_id: String,
+        token: AccountId,
+        amount: U128,
+        deposit_account: AccountId,
+        reason: String,
+        terms: CrossChainTerms,
+    ) -> PaymentOutcome {
+        let agent_id = env::predecessor_account_id();
+        if !self.agents.contains(&agent_id) {
+            fail(ReasonCode::NotAgent, "caller is not an agent of this vault");
+        }
+        let now = env::block_timestamp();
+        if let Err(code) = self.check_new_request(&request_id, &token, amount.0, &reason, |p| {
+            self.check_route(p, &token, &deposit_account, &terms, now)
+        }) {
+            return blocked(&request_id, &agent_id, code);
+        }
+        if self.open_approvals >= self.policy.max_open_approvals {
+            return blocked(&request_id, &agent_id, ReasonCode::TooManyOpenApprovals);
+        }
+        let day = now / NS_PER_DAY;
+        let count = self.request_counts.get(&day).copied().unwrap_or(0);
+        if count >= self.policy.max_requests_per_day {
+            return blocked(&request_id, &agent_id, ReasonCode::RateLimited);
+        }
+        self.request_counts.insert(day, count + 1);
+
+        // The request may wait no longer than the quote stays usable.
+        let ttl_end = now + u64::from(self.policy.approval_ttl_sec) * NS_PER_SEC;
+        let quote_end = terms.quote_expires_at_ns.0 - QUOTE_SAFETY_MARGIN_SEC * NS_PER_SEC;
+        let mut req = PaymentRequest {
+            request_id: request_id.clone(),
+            agent_id,
+            route: Route::OneClickOriginNear,
+            token,
+            amount,
+            recipient: deposit_account,
+            reason,
+            created_at_ns: U64(now),
+            expires_at_ns: U64(ttl_end.min(quote_end)),
+            policy_version: self.policy_version,
+            cross_chain: Some(terms),
+            request_hash: String::new(),
+            status: Status::AwaitingApproval,
+            reason_code: ReasonCode::RequiresOwnerApproval,
+            approved_by: None,
+            reserved_day: None,
+            updated_at_ns: U64(now),
+        };
+        req.request_hash = digest::request_hash(&self.network, env::current_account_id().as_str(), &req);
+        self.open_approvals += 1;
+        emit_status(&req);
+        let result = outcome(&req);
+        self.requests.insert(request_id, req);
+        result
+    }
+
     /// Executes an owner-approved request. Callable by the owner or the requesting agent.
     /// Re-checks pause, policy version, expiry, agent membership and budget.
     pub fn execute_request(&mut self, request_id: String) -> Promise {
@@ -323,6 +400,9 @@ impl Vault {
             }
             if req.policy_version != self.policy_version {
                 fail(ReasonCode::PolicyVersionChanged, "policy changed since approval");
+            }
+            if quote_too_late(req, env::block_timestamp()) {
+                fail(ReasonCode::QuoteExpired, "the 1Click quote is too close to its deadline");
             }
             if env::block_timestamp() > req.expires_at_ns.0 {
                 fail(ReasonCode::ApprovalExpired, "approval expired");
@@ -389,7 +469,12 @@ impl Vault {
         self.ledgers.insert(key, ledger);
 
         let req = self.get_stored_mut(&request_id);
-        if succeeded {
+        if succeeded && req.route == Route::OneClickOriginNear {
+            // The deposit reached 1Click. Its budget stays spent from here on, whatever 1Click later
+            // reports: a refund is not proof that tokens came back (AGENTS.md I9).
+            req.status = Status::CrossChainPending;
+            req.reason_code = ReasonCode::ExternalSettlementPending;
+        } else if succeeded {
             req.status = Status::Settled;
             req.reason_code = ReasonCode::Settled;
         } else {
@@ -479,13 +564,14 @@ impl Vault {
     }
 
     /// Policy checks for a new request, cheapest first. Returns the first failing reason.
+    /// `destination` checks the route-specific payee: the direct allowlist, or the 1Click route.
     fn check_new_request(
         &self,
         request_id: &str,
         token: &AccountId,
         amount: u128,
-        recipient: &AccountId,
         reason: &str,
+        destination: impl FnOnce(&Policy) -> Result<(), ReasonCode>,
     ) -> Result<(), ReasonCode> {
         if self.paused {
             return Err(ReasonCode::VaultPaused);
@@ -503,15 +589,55 @@ impl Vault {
             return Err(ReasonCode::InvalidReason);
         }
         let token_policy = self.policy.token_policy(token).ok_or(ReasonCode::TokenNotAllowed)?;
-        if !self.policy.allows_recipient(recipient) {
-            return Err(ReasonCode::RecipientNotAllowed);
-        }
+        destination(&self.policy)?;
         if amount > token_policy.hard_tx_limit.0 {
             return Err(ReasonCode::HardCapExceeded);
         }
         let ledger = self.ledgers.get(&(token.clone(), today())).cloned().unwrap_or_default();
         if amount > available(token_policy.daily_limit.0, &ledger) {
             return Err(ReasonCode::DailyBudgetExceeded);
+        }
+        Ok(())
+    }
+
+    /// Checks a 1Click quote's terms against the owner's allowlist. The quote itself is off-chain
+    /// data the agent passes on; nothing here proves it came from 1Click (AGENTS.md section 8).
+    fn check_route(
+        &self,
+        policy: &Policy,
+        token: &AccountId,
+        deposit_account: &AccountId,
+        terms: &CrossChainTerms,
+        now: u64,
+    ) -> Result<(), ReasonCode> {
+        if !is_valid_chain(&terms.destination_chain)
+            || !is_valid_external_id(&terms.destination_asset, MAX_ASSET_ID_LEN)
+            || !is_valid_external_id(&terms.destination_recipient, MAX_EXTERNAL_ADDRESS_LEN)
+            || !is_hex_sha256(&terms.quote_hash)
+            || terms.min_amount_out.0 == 0
+        {
+            return Err(ReasonCode::InvalidQuote);
+        }
+        let vault_id = env::current_account_id();
+        // Refunds must come back to the vault, and the deposit must leave it for a third party.
+        if terms.refund_to != vault_id {
+            return Err(ReasonCode::InvalidQuote);
+        }
+        if deposit_account == &vault_id
+            || deposit_account == &self.owner
+            || deposit_account == token
+            || self.agents.contains(deposit_account)
+        {
+            return Err(ReasonCode::InvalidQuote);
+        }
+        let route = policy
+            .cross_chain_route(token, &terms.destination_chain, &terms.destination_asset)
+            .ok_or(ReasonCode::RouteNotAllowed)?;
+        if !route.recipients.iter().any(|r| r == &terms.destination_recipient) {
+            return Err(ReasonCode::RecipientNotAllowed);
+        }
+        if terms.quote_expires_at_ns.0 <= now.saturating_add(QUOTE_SAFETY_MARGIN_SEC * NS_PER_SEC) {
+            return Err(ReasonCode::QuoteExpired);
         }
         Ok(())
     }
@@ -567,6 +693,14 @@ fn fail(code: ReasonCode, detail: &str) -> ! {
 
 fn today() -> u64 {
     env::block_timestamp() / NS_PER_DAY
+}
+
+/// True when a cross-chain request's quote has less than the safety margin left at `now`.
+fn quote_too_late(req: &PaymentRequest, now: u64) -> bool {
+    match &req.cross_chain {
+        Some(t) => now.saturating_add(QUOTE_SAFETY_MARGIN_SEC * NS_PER_SEC) >= t.quote_expires_at_ns.0,
+        None => false,
+    }
 }
 
 fn available(daily_limit: u128, ledger: &DailyLedger) -> u128 {
@@ -628,6 +762,25 @@ pub fn is_valid_reason(reason: &str) -> bool {
     reason.len() <= MAX_REASON_LEN && !reason.chars().any(char::is_control)
 }
 
+/// A chain name as 1Click lists it: 1-32 chars of `[a-z0-9-]`.
+pub fn is_valid_chain(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= MAX_CHAIN_LEN
+        && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+/// An asset id or a destination-chain address: ASCII letters, digits and `:._-` only, so there is
+/// no whitespace, no Unicode look-alike and no case folding to get wrong.
+pub fn is_valid_external_id(s: &str, max_len: usize) -> bool {
+    !s.is_empty()
+        && s.len() <= max_len
+        && s.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b':' | b'.' | b'_' | b'-'))
+}
+
+pub fn is_hex_sha256(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
 pub fn validate_policy(policy: &Policy, vault_id: &AccountId) -> Result<(), String> {
     if policy.tokens.len() > MAX_TOKENS {
         return Err(format!("at most {MAX_TOKENS} tokens"));
@@ -668,6 +821,38 @@ pub fn validate_policy(policy: &Policy, vault_id: &AccountId) -> Result<(), Stri
     }
     if policy.approval_ttl_sec < MIN_APPROVAL_TTL_SEC || policy.approval_ttl_sec > MAX_APPROVAL_TTL_SEC {
         return Err(format!("approval_ttl_sec must be {MIN_APPROVAL_TTL_SEC}..={MAX_APPROVAL_TTL_SEC}"));
+    }
+    if policy.cross_chain.len() > MAX_CROSS_CHAIN_ROUTES {
+        return Err(format!("at most {MAX_CROSS_CHAIN_ROUTES} cross-chain routes"));
+    }
+    for (i, r) in policy.cross_chain.iter().enumerate() {
+        if policy.token_policy(&r.token).is_none() {
+            return Err(format!("cross-chain route token {} is not in tokens", r.token));
+        }
+        if !is_valid_chain(&r.destination_chain) {
+            return Err("cross-chain destination_chain must be 1-32 chars of [a-z0-9-]".into());
+        }
+        if !is_valid_external_id(&r.destination_asset, MAX_ASSET_ID_LEN) {
+            return Err("cross-chain destination_asset must be 1-128 chars of [A-Za-z0-9:._-]".into());
+        }
+        if policy.cross_chain[..i].iter().any(|o| {
+            o.token == r.token
+                && o.destination_chain == r.destination_chain
+                && o.destination_asset == r.destination_asset
+        }) {
+            return Err(format!("duplicate cross-chain route to {}", r.destination_asset));
+        }
+        if r.recipients.is_empty() || r.recipients.len() > MAX_ROUTE_RECIPIENTS {
+            return Err(format!("each cross-chain route needs 1-{MAX_ROUTE_RECIPIENTS} recipients"));
+        }
+        for (j, a) in r.recipients.iter().enumerate() {
+            if !is_valid_external_id(a, MAX_EXTERNAL_ADDRESS_LEN) {
+                return Err("cross-chain recipients must be 1-128 chars of [A-Za-z0-9:._-]".into());
+            }
+            if r.recipients[..j].contains(a) {
+                return Err(format!("duplicate cross-chain recipient {a}"));
+            }
+        }
     }
     Ok(())
 }

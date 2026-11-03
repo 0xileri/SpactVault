@@ -7,7 +7,8 @@ import type { NotifierState } from "./state.js";
 import type { Telegram } from "./telegram.js";
 
 const PAGE = 50;
-const FINAL = new Set<PaymentRequest["status"]>(["SETTLED", "DENIED", "EXPIRED", "TRANSFER_FAILED"]);
+// CROSS_CHAIN_PENDING is final on chain: what 1Click does next is never written back to the vault.
+const FINAL = new Set<PaymentRequest["status"]>(["SETTLED", "DENIED", "EXPIRED", "TRANSFER_FAILED", "CROSS_CHAIN_PENDING"]);
 
 export interface WatcherDeps {
   config: Pick<NotifierConfig, "network" | "vaultId" | "approvalUrl">;

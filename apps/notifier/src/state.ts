@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 
 import { z } from "zod";
 
-const STATUSES = ["AWAITING_APPROVAL", "APPROVED", "DENIED", "EXPIRED", "TRANSFER_PENDING", "SETTLED", "TRANSFER_FAILED"] as const;
+const STATUSES = ["AWAITING_APPROVAL", "APPROVED", "DENIED", "EXPIRED", "TRANSFER_PENDING", "SETTLED", "TRANSFER_FAILED", "CROSS_CHAIN_PENDING"] as const;
 
 const stateSchema = z.object({
   version: z.literal(1),

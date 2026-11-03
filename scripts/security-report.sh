@@ -18,7 +18,7 @@ cd "$ROOT"
 run bash -c "scripts/test-contracts.sh 2>&1 | tee '$R/cargo.txt'"
 (cd contracts && rustc --version) > "$R/rustc-version.txt" 2>/dev/null || true
 
-for p in shared web mcp notifier; do
+for p in shared intents web mcp notifier; do
   run pnpm --filter "@spact/$p" exec vitest run --reporter=default --reporter=json --outputFile.json="$R/vitest-$p.json"
 done
 run pnpm mcp:sandbox --reporter=default --reporter=json --outputFile.json="$R/vitest-mcp-sandbox.json"

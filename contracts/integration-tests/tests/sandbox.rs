@@ -4,7 +4,7 @@
 //! Test IDs (S1, T03, ...) refer to AGENTS.md sections 10 and 13.
 
 use integration_tests::{
-    account, policy, setup, wasm, Deployment, AGENT_GAS, AGENT_METHODS, ONE_YOCTO, UNIT,
+    account, policy, setup, wasm, Deployment, AGENT_GAS, AGENT_METHODS, ONE_YOCTO, SOL_PAYEE, UNIT,
 };
 use near_workspaces::operations::Function;
 use near_workspaces::result::ExecutionFinalResult;
@@ -605,5 +605,195 @@ async fn t15_approval_for_another_vault_or_network_is_refused_on_chain() -> anyh
         .await?;
     assert_fails_with(r, "HASH_MISMATCH");
     assert_eq!(env.get_request("t15-twin").await?["status"], "AWAITING_APPROVAL");
+    Ok(())
+}
+
+// ------------------------------------------------------------------ cross-chain route (P1): T07, T12, T13, T14
+//
+// A 1Click deposit account is played by a plain sandbox account registered with the token. Nothing
+// here talks to 1Click: these tests show what the vault enforces on its side of the trust boundary.
+
+const HALF_HOUR_NS: u64 = 30 * 60 * 1_000_000_000;
+
+#[tokio::test]
+async fn t14_cross_chain_deposit_and_final_payee_are_bound_separately_on_chain() -> anyhow::Result<()> {
+    let env = setup().await?;
+    env.enable_cross_chain().await?;
+    let deposit = env.deposit_account("deposit").await?;
+    let deadline = env.now_ns().await? + HALF_HOUR_NS;
+
+    // 1 TUSD is under the 10 TUSD auto limit, but a cross-chain payment always waits for the owner.
+    let outcome: Value =
+        env.request_cross_chain(&env.agent, "xc-a", UNIT, deposit.id(), SOL_PAYEE, deadline).await?.json()?;
+    assert_eq!(outcome["status"], "AWAITING_APPROVAL");
+    assert_eq!(outcome["reason_code"], "REQUIRES_OWNER_APPROVAL");
+    assert_eq!(env.balance(deposit.id()).await?, 0, "nothing moves before the owner approves");
+
+    // The vault stores the deposit account and the final payee as two separate terms.
+    let stored = env.get_request("xc-a").await?;
+    assert_eq!(stored["route"], "ONE_CLICK_ORIGIN_NEAR");
+    assert_eq!(stored["recipient"], deposit.id().as_str());
+    assert_eq!(stored["cross_chain"]["destination_recipient"], SOL_PAYEE);
+    assert_eq!(stored["cross_chain"]["refund_to"], env.vault.id().as_str());
+
+    // The agent cannot swap the deposit account under the same id, nor approve its own request.
+    let twin: Value = env
+        .request_cross_chain(&env.agent, "xc-a", UNIT, env.mallory.id(), SOL_PAYEE, deadline)
+        .await?
+        .json()?;
+    assert_eq!(twin["reason_code"], "DUPLICATE_REQUEST");
+    let hash = outcome["request_hash"].as_str().unwrap().to_string();
+    let r = env
+        .agent
+        .call(env.vault.id(), "approve_request")
+        .args_json(json!({ "request_id": "xc-a", "request_hash": hash }))
+        .deposit(ONE_YOCTO)
+        .transact()
+        .await?;
+    assert!(r.into_result().is_err(), "the agent cannot approve");
+
+    // An approval made for the same payment with another deposit account does not open this one.
+    let other: Value = env
+        .request_cross_chain(&env.agent, "xc-b", UNIT, env.mallory.id(), SOL_PAYEE, deadline)
+        .await?
+        .json()?;
+    let other_hash = other["request_hash"].as_str().unwrap();
+    assert_fails_with(approve(&env, "xc-a", other_hash).await?, "HASH_MISMATCH");
+
+    // The exact approval pays the deposit account, once, and only the deposit account.
+    approve(&env, "xc-a", &hash).await?.into_result()?;
+    let paid: Value = env
+        .agent
+        .call(env.vault.id(), "execute_request")
+        .args_json(json!({ "request_id": "xc-a" }))
+        .gas(AGENT_GAS)
+        .transact()
+        .await?
+        .json()?;
+    assert_eq!(paid["status"], "CROSS_CHAIN_PENDING");
+    assert_eq!(paid["reason_code"], "EXTERNAL_SETTLEMENT_PENDING");
+    assert_eq!(env.balance(deposit.id()).await?, UNIT);
+    assert_eq!(env.balance(env.mallory.id()).await?, 0);
+    let again = env
+        .agent
+        .call(env.vault.id(), "execute_request")
+        .args_json(json!({ "request_id": "xc-a" }))
+        .gas(AGENT_GAS)
+        .transact()
+        .await?;
+    assert_fails_with(again, "INVALID_STATE");
+    assert_eq!(env.balance(deposit.id()).await?, UNIT, "exactly one deposit");
+    Ok(())
+}
+
+#[tokio::test]
+async fn t13_returned_tokens_do_not_restore_cross_chain_budget_on_chain() -> anyhow::Result<()> {
+    let env = setup().await?;
+    env.enable_cross_chain().await?;
+    let deposit = env.deposit_account("deposit").await?;
+    let deadline = env.now_ns().await? + HALF_HOUR_NS;
+    let vault_before = env.balance(env.vault.id()).await?;
+
+    let outcome: Value = env
+        .request_cross_chain(&env.agent, "xc-r", 20 * UNIT, deposit.id(), SOL_PAYEE, deadline)
+        .await?
+        .json()?;
+    approve(&env, "xc-r", outcome["request_hash"].as_str().unwrap()).await?.into_result()?;
+    env.agent
+        .call(env.vault.id(), "execute_request")
+        .args_json(json!({ "request_id": "xc-r" }))
+        .gas(AGENT_GAS)
+        .transact()
+        .await?
+        .into_result()?;
+    assert_eq!(env.budget().await?, (20 * UNIT, 0), "the deposit is charged to today's budget");
+    assert_eq!(env.balance(env.vault.id()).await?, vault_before - 20 * UNIT);
+
+    // 1Click "refunds": the deposit account sends the tokens back to the vault. Real or not, the
+    // vault does not know where they came from or why, so the budget stays spent.
+    deposit
+        .call(env.token.id(), "ft_transfer")
+        .args_json(json!({ "receiver_id": env.vault.id(), "amount": (20 * UNIT).to_string() }))
+        .deposit(ONE_YOCTO)
+        .transact()
+        .await?
+        .into_result()?;
+    assert_eq!(env.balance(env.vault.id()).await?, vault_before, "the tokens are back in the vault");
+    assert_eq!(env.budget().await?, (20 * UNIT, 0), "but today's budget is not credited");
+    let b: Value =
+        env.vault.view("get_budget").args_json(json!({ "token": env.token.id() })).await?.json()?;
+    assert_eq!(b["available"], (30 * UNIT).to_string());
+    assert_eq!(env.get_request("xc-r").await?["status"], "CROSS_CHAIN_PENDING");
+
+    // So the agent cannot spend the "refunded" amount again today: 31 more would exceed 50.
+    let over: Value = env.request("after-refund", 31 * UNIT, env.api.id()).await?.json()?;
+    assert_eq!(over["status"], "BLOCKED");
+    Ok(())
+}
+
+#[tokio::test]
+async fn t07_expired_quote_cannot_execute_on_chain() -> anyhow::Result<()> {
+    let env = setup().await?;
+    env.enable_cross_chain().await?;
+    let deposit = env.deposit_account("deposit").await?;
+    // The quote has 75 s left: enough to file and approve, not enough after the clock moves 20 s,
+    // because the vault wants 60 s of margin before the deadline.
+    let deadline = env.now_ns().await? + 75_000_000_000;
+    let outcome: Value = env
+        .request_cross_chain(&env.agent, "xc-late", 5 * UNIT, deposit.id(), SOL_PAYEE, deadline)
+        .await?
+        .json()?;
+    assert_eq!(outcome["status"], "AWAITING_APPROVAL");
+    approve(&env, "xc-late", outcome["request_hash"].as_str().unwrap()).await?.into_result()?;
+
+    advance_clock(&env, 20).await?;
+    let r = env
+        .agent
+        .call(env.vault.id(), "execute_request")
+        .args_json(json!({ "request_id": "xc-late" }))
+        .gas(AGENT_GAS)
+        .transact()
+        .await?;
+    assert_fails_with(r, "QUOTE_EXPIRED");
+    assert_eq!(env.balance(deposit.id()).await?, 0);
+    assert_eq!(env.budget().await?, (0, 0), "nothing was reserved");
+    assert_eq!(env.get_request("xc-late").await?["status"], "APPROVED");
+    Ok(())
+}
+
+#[tokio::test]
+async fn t12_unlisted_cross_chain_route_is_refused_on_chain() -> anyhow::Result<()> {
+    let env = setup().await?;
+    let deposit = env.deposit_account("deposit").await?;
+    let deadline = env.now_ns().await? + HALF_HOUR_NS;
+    // Before the owner allowlists any route, the cross-chain route is off.
+    let off: Value = env
+        .request_cross_chain(&env.agent, "xc-1", 5 * UNIT, deposit.id(), SOL_PAYEE, deadline)
+        .await?
+        .json()?;
+    assert_eq!(
+        (off["status"].as_str(), off["reason_code"].as_str()),
+        (Some("BLOCKED"), Some("ROUTE_NOT_ALLOWED"))
+    );
+
+    env.enable_cross_chain().await?;
+    let other_payee: Value = env
+        .request_cross_chain(
+            &env.agent,
+            "xc-2",
+            5 * UNIT,
+            deposit.id(),
+            "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
+            deadline,
+        )
+        .await?
+        .json()?;
+    assert_eq!(other_payee["reason_code"], "RECIPIENT_NOT_ALLOWED");
+    let to_vault: Value = env
+        .request_cross_chain(&env.agent, "xc-3", 5 * UNIT, env.vault.id(), SOL_PAYEE, deadline)
+        .await?
+        .json()?;
+    assert_eq!(to_vault["reason_code"], "INVALID_QUOTE");
+    assert_eq!(env.config().await?["request_count"], 0, "blocked requests are not stored");
     Ok(())
 }

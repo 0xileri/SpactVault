@@ -28,7 +28,10 @@ Status labels: **built** (code plus passing tests in this repo), **planned** (in
  OWNER PHONE: Telegram notifier (apps/notifier) [built]
    polls the vault -> plain-text alert with the exact terms + approval link -> follow-up when paid
 
- planned: API/indexer, 1Click adapter (P1)
+ 1Click adapter (packages/intents) [built, mock only; no live call yet]
+   quote request -> checked quote -> request_cross_chain_payment terms; status -> reconciliation (never re-credits)
+
+ planned: API/indexer
 ```
 
 ## Vault contract (`contracts/spact-vault`) [built]
@@ -48,7 +51,15 @@ AWAITING_APPROVAL | APPROVED --expire_request after TTL--> EXPIRED
 APPROVED --execute_request (owner or agent), rechecks--> reserve + ft_transfer --> TRANSFER_PENDING
 TRANSFER_PENDING --callback: transfer ok-----> SETTLED          (pending -> executed)
 TRANSFER_PENDING --callback: transfer failed-> TRANSFER_FAILED  (pending released)
+
+request_cross_chain_payment (agent; P1, ADR-032)
+  |-- policy or route check fails ----------------------> BLOCKED (returned + event, not stored)
+  '-- otherwise, whatever the amount -------------------> AWAITING_APPROVAL
+  ... approve / execute as above, plus: quote has > 60 s left (else QUOTE_EXPIRED)
+TRANSFER_PENDING --callback: transfer ok-----> CROSS_CHAIN_PENDING  (pending -> executed; final on chain)
 ```
+
+A cross-chain request's NEAR recipient is the 1Click deposit account. The final recipient, destination chain and asset, refund target, minimum output, quote hash and quote deadline are stored in `cross_chain` and covered by the request hash. CROSS_CHAIN_PENDING is where the vault's part ends: 1Click's later SUCCESS or REFUNDED is an off-chain report that the vault never reads, so the budget is never re-credited.
 
 The spec's AUTO_AUTHORIZED, RESERVED and SOURCE_CONFIRMED states happen inside one receipt, so they are never observable and not stored (ADR-007).
 
@@ -139,4 +150,4 @@ CI uploads every job's raw output as `report-*` artifacts. The `security-report`
 | Component | Role | Authority |
 |---|---|---|
 | API (Hono on Workers) | relay agent requests, index events, send notifications | none: on-chain state wins |
-| 1Click adapter (P1) | quote and owner-approved cross-chain route | trusted off-chain quote, disclosed |
+| 1Click live calls and status polling (P1) | the adapter in `packages/intents` exists and is tested with a mock; nothing calls the live API yet | trusted off-chain quote, disclosed |

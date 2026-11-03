@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-11-01 (UTC). Network mode: **NEAR mainnet** since 2026-11-01, with a locked vault holding 5 real USDC (see "Mainnet deployment"). The testnet vault (since 2026-10-25) and the local sandbox stay for tests; testnet NEAR and the TUSD test token have no value.
+Last updated 2026-11-02 (UTC). Network mode: **NEAR mainnet** since 2026-11-01, with a locked vault holding 5 real USDC (see "Mainnet deployment"). The testnet vault (since 2026-10-25) and the local sandbox stay for tests; testnet NEAR and the TUSD test token have no value.
 
 ## Milestone: AGENTS.md section 19 steps 1-5
 
@@ -11,7 +11,7 @@ Last updated 2026-11-01 (UTC). Network mode: **NEAR mainnet** since 2026-11-01, 
 | 3. Monorepo with lint/typecheck/test/build baseline | done (pnpm + cargo workspaces, CI workflow) |
 | 4. Vault with owner/agent auth and policy validation, negative tests | done |
 | 5. Mock NEP-141 + sandbox direct payment; reservation, failure, replay, concurrency, rollover | done (rollover in unit tests only) |
-| 6. Dashboard, Telegram, wallet approval page, then P1 | dashboard, approval page and Telegram notifier built and tested on sandbox (Telegram against a mock Bot API); approval with a real wallet done on testnet; P1 not started |
+| 6. Dashboard, Telegram, wallet approval page, then P1 | dashboard, approval page and Telegram notifier built and tested on sandbox (Telegram against a mock Bot API); approval with a real wallet done on testnet; **P1 cross-chain route built and local tested (sandbox + mock 1Click), not live** (see "P1: NEAR Intents 1Click route") |
 
 ## P0 checklist (AGENTS.md section 4)
 
@@ -24,8 +24,33 @@ Last updated 2026-11-01 (UTC). Network mode: **NEAR mainnet** since 2026-11-01, 
 | 5 | larger payment awaits approval; Telegram notice | local tested: the notifier alerts on sandbox, then follows up when paid; **real Telegram delivery untested** (mock Bot API; api.telegram.org unreachable here) |
 | 6 | owner wallet approves the exact request; executes once | local tested in a real browser (sandbox, dev signer); **testnet: the owner approved and paid `demo-approve-1` (25 TUSD) with Meteor Wallet on the hosted site**, and the page showed "Confirmed on chain" (owner's report, 2026-10-25). Other wallets untested |
 | 7 | dashboard | local tested in a real browser (sandbox): balance, budget, open requests and activity match the chain; inconsistent budget data from the RPC is flagged; no tx hashes (no indexer) |
-| 8 | Security Lab, at least 6 negative tests | local tested: generated report and page; 13 of 18 cases pass on a local chain, 3 in unit tests only, 2 are P1 (THREAT_MODEL.md); CI builds the report and publishes it with the site to GitHub Pages from main (ADR-023) |
+| 8 | Security Lab, at least 6 negative tests | local tested: generated report and page; 17 of 18 cases pass on a local chain, T10 in unit tests only, none uncovered (2026-11-02, with the P1 route; THREAT_MODEL.md); CI builds the report and publishes it with the site to GitHub Pages from main (ADR-023) |
 | 9 | public app, README, video, submission | public repo; site live at https://spactvault.xyz (Railway) and https://0xileri.github.io/SpactVault/, both built for the mainnet vault, with a landing page and brand (ADR-024, ADR-027); README in progress; video and submission not started |
+
+## P1: NEAR Intents 1Click route (2026-11-02)
+
+DECISIONS ADR-032. **Local tested only:** a sandbox vault, a sandbox account standing in for a 1Click deposit address, and `MockOneClick` answers shaped by the official SDK's types. No 1Click call was made, nothing was deployed to testnet or mainnet, and no funds moved. The deployed vaults run the earlier code and have no cross-chain route.
+
+| AGENTS.md P1 item | State |
+|---|---|
+| 10. 1Click dry quote; token discovery; request parameters validated; quote terms captured and hashed | `packages/intents`: quote request builder (EXACT_INPUT, ORIGIN_CHAIN, refund to the vault), token-list route lookup, quote checks, canonical quote hash; mock-tested. **No live dry quote** (API host unreachable here). The web UI does not request quotes |
+| 11. Human-approved NEAR-origin payment through 1Click, live statuses, refund state | vault `request_cross_chain_payment` (always owner-approved, deposit account and destination bound into the approved hash, quote deadline enforced, budget never re-credited), approval page and Telegram alert showing deposit address and final recipient apart, status reconciliation (`REFUND_UNVERIFIED`); **sandbox only, no live payment** (needs owner sign-off, a verified deposit method and a redeployed vault) |
+| 12. MCP bridge with a restricted spend-request capability | done for direct payments (ADR-018); the agent key and MCP tools do not include the cross-chain method yet |
+| 13. Approval expiry, idempotent retries, event reconciliation, quote mutation tests | quote expiry (QUOTE_EXPIRED) and quote mutation tests (T07, T14) added; event reconciliation and retries unchanged |
+
+- **Vault:**
+  - a new route `ONE_CLICK_ORIGIN_NEAR` with a `cross_chain` allowlist in the policy (off by default);
+  - the request stores the quote's deposit account as its NEAR recipient, plus the destination tuple;
+  - a delivered deposit ends at CROSS_CHAIN_PENDING with its budget spent; a failed one releases the reservation once.
+- **Security Lab:**
+  - T13: a 1Click refund report never restores budget, and tokens sent back to the vault do not either (sandbox);
+  - T14: the review page shows the deposit address and the final payee apart; a swapped deposit address or payee fails the hash check or the vault (browser, sandbox and unit tests);
+  - both are mapped in `packages/security-lab/src/catalog.ts`, and `scripts/security-report.sh` runs the new `vitest:intents` suite.
+- **Unverified:**
+  - the NEAR-origin deposit mechanics (plain `ft_transfer`, storage registration of the deposit account);
+  - the live API's answers;
+  - the quote signature's format.
+  - INTEGRATIONS.md has the sources.
 
 ## Mainnet deployment (2026-11-01)
 
@@ -80,15 +105,15 @@ Deployed by the owner with `scripts/deploy-testnet.sh spact-ileri2.testnet 0xile
   - *A confusing "Confirmed".* After the first approval attempt the owner saw "Confirmed on chain" while the vault still showed the request waiting. Reopening the link fresh, the approval went through. The page only prints that banner after reading the request as settled, so the likeliest cause is an older tab from `demo-approve-1`. This was not reproduced.
 - **Build reproducibility:** the same source built in this environment gives `70803e02…` instead of `bb664f2a…`. The wasm embeds build-machine paths (e.g. `/root/.cargo/registry/...`). Remapping that one path did not reproduce the deployed hash, so another difference remains. Anyone checking the deployed code against the source cannot do it bit for bit yet.
 
-## Tests (last run 2026-10-24; deploy rehearsal 2026-10-25)
+## Tests (last full run 2026-11-02; deploy rehearsal 2026-10-25)
 
 | Command | Result |
 |---|---|
-| `scripts/test-contracts.sh` | vault unit 51 passed; mock-ft unit 1 passed; sandbox 15 passed (2026-10-30) |
+| `scripts/security-report.sh` (every suite, then the report; 2026-11-02, P1 branch) | **263 tests in 11 suites passed, 0 failed**: vault unit 66, mock-ft 1, sandbox 19, shared 23, intents 14, web 48, mcp 24, notifier 28, mcp over stdio on sandbox 11, notifier on sandbox 4, browser 25. Report: 17 cases passed on a local chain (T01-T09, T11-T18), T10 unit only, none uncovered |
+| `scripts/test-contracts.sh` | vault unit 66 passed; mock-ft unit 1 passed; sandbox 19 passed (2026-11-02) |
 | `cargo clippy --workspace --all-targets -- -D warnings` (in `contracts/`) | clean |
 | `cargo fmt --all --check` | clean |
-| `pnpm lint && pnpm typecheck && pnpm test && pnpm build` | clean; shared 19 passed, web 33 passed, mcp 24 passed, notifier 27 passed, security-lab 8 passed |
-| `scripts/security-report.sh` (every suite, then the report) | 180 tests in 10 suites passed; report: 13 cases passed on a local chain, 3 unit only (T07, T10, T15), 2 not covered (T13, T14, P1) |
+| `pnpm lint && pnpm typecheck && pnpm test && pnpm build` | clean; shared 23, intents 14, web 48, mcp 24, notifier 28, security-lab 8 passed (2026-11-02) |
 | `pnpm notifier:sandbox` (built notifier, local sandbox, mock Bot API) | 4 passed: links only the private chat with the terminal's code (group, wrong code and forged button ignored); alert with exact terms and the approval page as the only link; follow-up after the owner approves and pays; after a restart no repeats, and a new request is alerted with the link in its note defanged |
 | `pnpm mcp:sandbox` (built MCP server over stdio, local sandbox) | 11 passed: two tools only; auto payment settles; larger request waits, then is paid after the owner approves; hard cap blocked; T18 prompt-injected request to an unlisted account blocked; duplicate id not paid twice; bad input sends nothing; startup refused with a full-access key, a key for another contract, or a missing key |
 | `pnpm e2e` (Chromium, local sandbox; the agent signs with its function-call key) | 19 passed: the landing page's headline, its hero example uses amounts from the vault's limits and says why each ends as it does, its main button leads to the three steps, the rules match the policy, its live numbers match the chain, and it fits a 390 px screen; the hero plays paid, waiting for Approve and refused in turn, pauses off screen, sections fade in as they are reached, and with reduced motion the hero is one still frame of all three outcomes and everything shows at once; the published site has a working skip link, a Privacy and terms page and a branded 404; the production build under `/Spact/` with no vault serves the landing page and the Security Lab, says no vault is connected elsewhere, carries share-card tags with absolute URLs, serves its image, and makes no request outside its own host; inside a frame neither site draws anything to click; the Security Lab page shows cases, evidence and the CI run link; a report that contradicts its own evidence is not believed; a missing or broken report is named as such; dashboard matches the chain (balance, budget, waiting request, activity rows that say what happened and why); a tampered budget is flagged instead of shown; approve and pay (the page says why it waits, and what happened once paid), reject, altered recipient flagged, forged hash refused by the vault, non-owner blocked, foreign-vault link refused, open-request list |
@@ -212,6 +237,9 @@ Agent key (2026-10-24): the agent now signs with a function-call key that reache
 - Only Meteor Wallet has signed an approval; other wallets are untested.
 - The vault wasm is not reproducible across build machines, so the deployed code hash cannot yet be checked bit for bit against the source.
 - No Content-Security-Policy, and framing is refused by script rather than a `frame-ancestors` header, which GitHub Pages cannot send (ADR-023).
+- P1: after the deposit, 1Click is trusted; the vault cannot verify delivery or a refund (ADR-032, THREAT_MODEL).
+- P1: the agent files the quote's deposit address. Nothing yet checks it against 1Click's own record from the approval page (the adapter has `depositMismatches`), so a malicious agent's made-up deposit address relies on the owner noticing.
+- P1: NEAR-origin 1Click deposit mechanics are unverified (INTEGRATIONS.md).
 
 ## Next smallest task
 

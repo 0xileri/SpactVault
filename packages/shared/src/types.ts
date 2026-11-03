@@ -2,7 +2,7 @@ import type { ReasonCode } from "./reasonCodes.js";
 
 /** JSON shapes returned by the vault contract. Amounts and nanosecond timestamps are strings. */
 
-export type Route = "NEAR_DIRECT";
+export type Route = "NEAR_DIRECT" | "ONE_CLICK_ORIGIN_NEAR";
 
 export type Status =
   | "BLOCKED"
@@ -12,7 +12,8 @@ export type Status =
   | "EXPIRED"
   | "TRANSFER_PENDING"
   | "SETTLED"
-  | "TRANSFER_FAILED";
+  | "TRANSFER_FAILED"
+  | "CROSS_CHAIN_PENDING";
 
 export interface TokenPolicy {
   token: string;
@@ -21,12 +22,32 @@ export interface TokenPolicy {
   daily_limit: string;
 }
 
+/** An owner-allowlisted 1Click route (P1). Vaults deployed before P1 report none. */
+export interface CrossChainRoute {
+  token: string;
+  destination_chain: string;
+  destination_asset: string;
+  recipients: string[];
+}
+
 export interface Policy {
   tokens: TokenPolicy[];
   recipients: string[];
   max_open_approvals: number;
   max_requests_per_day: number;
   approval_ttl_sec: number;
+  cross_chain: CrossChainRoute[];
+}
+
+/** The quote terms a ONE_CLICK_ORIGIN_NEAR request is bound to (off-chain data, see AGENTS.md I8). */
+export interface CrossChainTerms {
+  destination_chain: string;
+  destination_asset: string;
+  destination_recipient: string;
+  refund_to: string;
+  min_amount_out: string;
+  quote_hash: string;
+  quote_expires_at_ns: string;
 }
 
 export interface PaymentRequest {
@@ -40,6 +61,8 @@ export interface PaymentRequest {
   created_at_ns: string;
   expires_at_ns: string;
   policy_version: number;
+  /** Set for ONE_CLICK_ORIGIN_NEAR, where `recipient` is the 1Click deposit account. */
+  cross_chain: CrossChainTerms | null;
   request_hash: string;
   status: Status;
   reason_code: ReasonCode;

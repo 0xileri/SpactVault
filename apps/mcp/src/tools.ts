@@ -18,6 +18,7 @@ const STATUSES = [
   "TRANSFER_PENDING",
   "SETTLED",
   "TRANSFER_FAILED",
+  "CROSS_CHAIN_PENDING",
 ] as const satisfies readonly Status[];
 
 // Same rules as is_valid_request_id / is_valid_reason in the vault. The vault checks them again;
