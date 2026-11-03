@@ -43,8 +43,11 @@ interface StoredDeploy {
   init: Record<string, unknown>;
 }
 
+/** The setup the review screen saved in this tab's sessionStorage, once it has saved it. */
 async function storedDeploy(page: Page): Promise<StoredDeploy> {
-  return JSON.parse((await page.evaluate(() => sessionStorage.getItem("spactvault.pending-deploy"))) ?? "{}") as StoredDeploy;
+  const read = () => page.evaluate(() => sessionStorage.getItem("spactvault.pending-deploy"));
+  await expect.poll(read).not.toBeNull();
+  return JSON.parse((await read()) ?? "{}") as StoredDeploy;
 }
 
 /** Total gas a transaction and its receipts burnt, read from the RPC. */
