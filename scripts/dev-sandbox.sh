@@ -5,11 +5,13 @@
 #   3. the approval page on http://localhost:5173
 #   4. the agent's MCP server, built and ready to add to Claude Code or Codex (commands printed below)
 #   5. optionally, the Telegram notifier: run the printed command with your own bot token
+#   6. a MOCK 1Click server on localhost for the cross-chain pages (never the real 1Click)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FIXTURE="$ROOT/contracts/target/sandbox-fixture.json"
 AGENT_KEY="$ROOT/contracts/target/sandbox-agent-key.json"
 SIGNER_PORT="${DEV_SIGNER_PORT:-8788}"
+ONECLICK_PORT="${MOCK_ONECLICK_PORT:-8787}"
 WEB_PORT="${WEB_PORT:-5173}"
 rm -f "$FIXTURE" "$AGENT_KEY"
 
@@ -28,6 +30,8 @@ for _ in $(seq 1 120); do [ -s "$FIXTURE" ] && break; sleep 1; done
 field() { node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))[process.argv[2]])" "$FIXTURE" "$1"; }
 
 (cd "$ROOT/apps/web" && DEV_SIGNER_PORT="$SIGNER_PORT" node --experimental-strip-types dev/dev-signer.ts "$FIXTURE") &
+pids+=($!)
+(cd "$ROOT/apps/web" && MOCK_ONECLICK_PORT="$ONECLICK_PORT" node --experimental-strip-types dev/mock-oneclick.ts "$FIXTURE") &
 pids+=($!)
 
 # The agent's function-call key, in near-cli's key file format, for the MCP server.
@@ -68,4 +72,5 @@ VITE_NEAR_NETWORK=sandbox \
 VITE_NEAR_RPC_URL="$(field rpc_url)" \
 VITE_VAULT_ID="$(field vault_id)" \
 VITE_DEV_SIGNER_URL="http://127.0.0.1:$SIGNER_PORT" \
+VITE_ONECLICK_URL="http://127.0.0.1:$ONECLICK_PORT" \
   pnpm exec vite --port "$WEB_PORT" --strictPort

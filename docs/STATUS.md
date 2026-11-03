@@ -136,11 +136,12 @@ Deployed by the owner with `scripts/deploy-testnet.sh spact-ileri2.testnet 0xile
   - *A confusing "Confirmed".* After the first approval attempt the owner saw "Confirmed on chain" while the vault still showed the request waiting. Reopening the link fresh, the approval went through. The page only prints that banner after reading the request as settled, so the likeliest cause is an older tab from `demo-approve-1`. This was not reproduced.
 - **Build reproducibility:** the same source built in this environment gives `70803e02…` instead of `bb664f2a…`. The wasm embeds build-machine paths (e.g. `/root/.cargo/registry/...`). Remapping that one path did not reproduce the deployed hash, so another difference remains. Anyone checking the deployed code against the source cannot do it bit for bit yet.
 
-## Tests (last full run 2026-11-02; deploy rehearsal 2026-10-25)
+## Tests (last full run 2026-11-03; deploy rehearsal 2026-10-25)
 
 | Command | Result |
 |---|---|
-| `scripts/security-report.sh` (every suite, then the report; 2026-11-02, P1 branch) | **263 tests in 11 suites passed, 0 failed**: vault unit 66, mock-ft 1, sandbox 19, shared 23, intents 14, web 48, mcp 24, notifier 28, mcp over stdio on sandbox 11, notifier on sandbox 4, browser 25. Report: 17 cases passed on a local chain (T01-T09, T11-T18), T10 unit only, none uncovered |
+| `scripts/security-report.sh` (every suite, then the report; 2026-11-03, owner flows on the website) | **313 tests in 11 suites passed, 0 failed**: vault unit 66, mock-ft 1, sandbox 19, shared 26, intents 16, web 71, mcp 31, notifier 28, mcp over stdio on sandbox 11, notifier on sandbox 4, browser 40 (11 new owner-flow tests, 4 new cross-chain tests). Report: 17 cases passed on a local chain (T01-T09, T11-T18), T10 unit only, none uncovered |
+| `scripts/security-report.sh` (2026-11-02, P1 branch) | **263 tests in 11 suites passed, 0 failed**: vault unit 66, mock-ft 1, sandbox 19, shared 23, intents 14, web 48, mcp 24, notifier 28, mcp over stdio on sandbox 11, notifier on sandbox 4, browser 25. Report: 17 cases passed on a local chain (T01-T09, T11-T18), T10 unit only, none uncovered |
 | `scripts/test-contracts.sh` | vault unit 66 passed; mock-ft unit 1 passed; sandbox 19 passed (2026-11-02) |
 | `cargo clippy --workspace --all-targets -- -D warnings` (in `contracts/`) | clean |
 | `cargo fmt --all --check` | clean |
