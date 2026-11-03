@@ -75,4 +75,9 @@ describe("catalog", () => {
       expect(c.tests.length, c.id).toBeGreaterThan(0);
     }
   });
+
+  it("builds a report the schema accepts even when nothing ran, so a long note fails here, not at the end of a full run", () => {
+    // buildReport validates its own output with the report schema (400 characters per note, among others)
+    expect(() => buildReport(new Map(), { ...options, suites: SUITES, cases: CASES })).not.toThrow();
+  });
 });

@@ -228,7 +228,7 @@ export const CASES: readonly CatalogCase[] = [
       ["playwright:web", "even if the RPC and 1Click both lie the same way, the vault refuses the forged terms"],
       ["playwright:web", "the owner approves the exact route, and the vault pays only the 1Click deposit address"],
     ],
-    note: "Trust boundary: the vault cannot check that 1Click pays the final recipient. The owner approves the deposit address and the destination together (AGENTS.md I8), and the approval page keeps Approve off unless 1Click's own record of the deposit address matches the request (ADR-033). 1Click's record must also carry 1Click's own signature (ADR-034), checked against live answers recorded on 2026-11-03; the browser tests use the mock 1Click server (apps/web/e2e/mock-oneclick.ts), shaped like those answers and signing with a sandbox-only key.",
+    note: "The vault cannot check that 1Click pays the final recipient. The owner approves deposit address and destination together (I8); Approve stays off unless 1Click's signed record of the deposit address matches the request (ADR-033, ADR-034). Tested on live answers recorded 2026-11-03 and a mock 1Click (apps/web/e2e/mock-oneclick.ts) that signs with a sandbox-only key.",
   },
   {
     id: "T15",
