@@ -49,6 +49,14 @@ describe("keyProblem", () => {
   it("accepts a function-call key for the vault's agent methods", () => {
     expect(keyProblem(fc(vault, [...AGENT_METHODS]), vault)).toBeNull();
     expect(keyProblem(fc(vault, ["request_direct_payment"]), vault)).toBeNull();
+    // keys made before P1 keep working for direct payments
+    expect(keyProblem(fc(vault, ["request_direct_payment", "execute_request"]), vault)).toBeNull();
+    expect(AGENT_METHODS).toEqual(["request_direct_payment", "request_cross_chain_payment", "execute_request"]);
+  });
+
+  it("says when a key lacks the method a tool needs", () => {
+    expect(keyProblem(fc(vault, ["request_direct_payment", "execute_request"]), vault, "request_cross_chain_payment")).toMatch(/cannot call request_cross_chain_payment/);
+    expect(keyProblem(fc(vault, [...AGENT_METHODS]), vault, "request_cross_chain_payment")).toBeNull();
   });
 
   it("refuses full-access keys and anything broader or elsewhere", () => {

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Local stdio MCP server that lets an AI agent request SpactVault payments with its restricted key",
+  "description": "Local stdio MCP server that lets an AI agent request SpactVault payments, direct or cross-chain through 1Click, with its restricted key",
   "bin": {
     "spact-mcp": "./dist/index.js"
   },
@@ -11,10 +11,11 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:sandbox": "pnpm --filter @spact/shared build && tsc -p tsconfig.build.json && vitest run --config vitest.sandbox.config.ts"
+    "test:sandbox": "pnpm --filter @spact/shared build && pnpm --filter @spact/intents build && tsc -p tsconfig.build.json && vitest run --config vitest.sandbox.config.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.3.1",
+    "@spact/intents": "workspace:*",
     "@spact/shared": "workspace:*",
     "near-api-js": "7.2.0",
     "zod": "4.6.5"

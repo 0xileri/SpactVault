@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { finalBlockTimestampNs, RpcError, viewAccessKey, viewFunction } from "../src/rpc.js";
+import { finalBlockTimestampNs, NO_CODE_HASH, RpcError, viewAccessKey, viewAccessKeyList, viewAccount, viewFunction } from "../src/rpc.js";
 
 function mockFetch(body: unknown, status = 200) {
   const text = typeof body === "string" ? body : JSON.stringify(body);
@@ -70,5 +70,49 @@ describe("viewAccessKey", () => {
     await expect(viewAccessKey("http://rpc", "a.near", "ed25519:abc")).resolves.toBeNull();
     mockFetch({ jsonrpc: "2.0", id: "x", error: { name: "HANDLER_ERROR", cause: { name: "UNKNOWN_ACCOUNT", info: {} }, data: "account a.near does not exist" } });
     await expect(viewAccessKey("http://rpc", "a.near", "ed25519:abc")).rejects.toBeInstanceOf(RpcError);
+  });
+});
+
+describe("viewAccount", () => {
+  it("returns balance and code hash, and null for a missing account", async () => {
+    mockFetch({ jsonrpc: "2.0", id: "x", result: { amount: "3000000000000000000000000", locked: "0", code_hash: NO_CODE_HASH, storage_usage: 182, block_height: 1 } });
+    await expect(viewAccount("http://rpc", "vault2.alice.near")).resolves.toEqual({
+      amount: "3000000000000000000000000",
+      locked: "0",
+      codeHash: NO_CODE_HASH,
+      storageUsage: 182,
+    });
+    mockFetch({ jsonrpc: "2.0", id: "x", error: { name: "HANDLER_ERROR", cause: { name: "UNKNOWN_ACCOUNT", info: {} }, data: "account vault2.alice.near does not exist while viewing" } });
+    await expect(viewAccount("http://rpc", "vault2.alice.near")).resolves.toBeNull();
+  });
+
+  it("refuses a response that is not shaped like an account", async () => {
+    mockFetch({ jsonrpc: "2.0", id: "x", result: { amount: 3, locked: "0", code_hash: NO_CODE_HASH, storage_usage: 1 } });
+    await expect(viewAccount("http://rpc", "a.near")).rejects.toBeInstanceOf(RpcError);
+    mockFetch({ jsonrpc: "2.0", id: "x", result: { amount: "3", locked: "0", code_hash: "0xnot-base58", storage_usage: 1 } });
+    await expect(viewAccount("http://rpc", "a.near")).rejects.toThrow(/base58/);
+  });
+});
+
+describe("viewAccessKeyList", () => {
+  it("lists every key with its permission", async () => {
+    mockFetch({
+      jsonrpc: "2.0",
+      id: "x",
+      result: {
+        keys: [
+          { public_key: "ed25519:8p7Bq", access_key: { nonce: 1, permission: "FullAccess" } },
+          { public_key: "ed25519:9x2Kp", access_key: { nonce: 2, permission: { FunctionCall: { allowance: null, receiver_id: "vault.near", method_names: ["execute_request"] } } } },
+        ],
+      },
+    });
+    await expect(viewAccessKeyList("http://rpc", "agent.near")).resolves.toEqual([
+      { publicKey: "ed25519:8p7Bq", permission: { kind: "FullAccess" } },
+      { publicKey: "ed25519:9x2Kp", permission: { kind: "FunctionCall", receiverId: "vault.near", methodNames: ["execute_request"], allowance: null } },
+    ]);
+    mockFetch({ jsonrpc: "2.0", id: "x", result: { keys: [] } });
+    await expect(viewAccessKeyList("http://rpc", "vault.near")).resolves.toEqual([]);
+    mockFetch({ jsonrpc: "2.0", id: "x", result: { keys: [{ access_key: {} }] } });
+    await expect(viewAccessKeyList("http://rpc", "vault.near")).rejects.toThrow(/public_key/);
   });
 });

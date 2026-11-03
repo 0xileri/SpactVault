@@ -2,6 +2,7 @@ import { digestInputFromRequest, isReasonCode, parseU128, requestHash, type Reas
 
 import type { AppConfig } from "./config.js";
 import type { VaultSnapshot } from "./near/vault.js";
+import type { DepositCheck } from "./oneclick.js";
 
 /** Same shape near-connect accepts, so every signer can take it unchanged. */
 export interface FunctionCallAction {
@@ -29,7 +30,9 @@ export type ProblemCode =
   | "NOT_CONNECTED"
   | "NOT_OWNER"
   | "TOKEN_METADATA_MISSING"
-  | "QUOTE_EXPIRED";
+  | "QUOTE_EXPIRED"
+  | "DEPOSIT_UNVERIFIED"
+  | "DEPOSIT_NOT_REGISTERED";
 
 /** The vault's QUOTE_SAFETY_MARGIN_SEC, in nanoseconds. */
 const QUOTE_MARGIN_NS = 60_000_000_000n;
@@ -58,6 +61,8 @@ export interface AssessInput {
   signerAccountId: string | null;
   /** Approve and execute in one transaction. */
   executeNow: boolean;
+  /** 1Click's record of a cross-chain request's deposit address (oneclick.ts). Ignored for direct payments. */
+  deposit?: DepositCheck | null;
 }
 
 /**
@@ -65,7 +70,7 @@ export interface AssessInput {
  * The hash uses the network and vault this page is configured for (what the owner believes
  * they are approving), not the values reported by the RPC.
  */
-export function assess({ config, snapshot, signerAvailable, signerAccountId, executeNow }: AssessInput): Assessment {
+export function assess({ config, snapshot, signerAvailable, signerAccountId, executeNow, deposit = null }: AssessInput): Assessment {
   const problems: Problem[] = [];
   const add = (code: ProblemCode, message: string, blocksApprove: boolean, blocksReject: boolean) =>
     problems.push({ code, message, blocksApprove, blocksReject });
@@ -101,6 +106,22 @@ export function assess({ config, snapshot, signerAvailable, signerAccountId, exe
     if (expiresInSec < 0) add("EXPIRED", "This request has expired, so it can no longer be paid.", true, false);
     if (request.cross_chain && snapshot.nowNs + QUOTE_MARGIN_NS >= BigInt(request.cross_chain.quote_expires_at_ns)) {
       add("QUOTE_EXPIRED", "The 1Click quote is at or near its deadline, so the vault will refuse it. Your agent needs a new quote.", true, false);
+    }
+    if (request.cross_chain && request.status === "AWAITING_APPROVAL") {
+      // The vault cannot tell whose deposit address this is. 1Click can: approve only when its own record
+      // of the address matches every term shown here (Security Lab T14).
+      const d = deposit ?? { state: "checking" as const };
+      if (d.state === "unavailable") {
+        add("DEPOSIT_UNVERIFIED", "This copy of the site cannot reach 1Click, so it cannot confirm that the deposit address belongs to this quote. Approve it on a site that can.", true, false);
+      } else if (d.state === "checking") {
+        add("DEPOSIT_UNVERIFIED", "Checking the deposit address with 1Click…", true, false);
+      } else if (d.state === "error") {
+        add("DEPOSIT_UNVERIFIED", `Could not check the deposit address with 1Click (${d.message}). Approve stays off until it can.`, true, false);
+      } else if (d.state === "mismatch") {
+        add("DEPOSIT_UNVERIFIED", `1Click's record of this deposit address does not match the request: ${d.mismatches.join("; ")}. Do not approve: reject it.`, true, false);
+      } else if (d.registered === false) {
+        add("DEPOSIT_NOT_REGISTERED", "The deposit address is not registered with the token yet, so the transfer would fail. Register it first (below).", true, false);
+      }
     }
     if (request.policy_version !== vault.policy_version) {
       add("POLICY_CHANGED", "Your rules changed after this request was made, so it cannot be approved. Your agent needs to ask again.", true, false);

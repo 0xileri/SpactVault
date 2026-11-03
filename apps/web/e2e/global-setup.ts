@@ -6,11 +6,16 @@ import { extname, join, resolve, sep } from "node:path";
 
 import { createServer } from "vite";
 
+import { MOCK_SIGNER_PUBLIC_KEY } from "@spact/intents";
+
+import { startMockOneClick } from "./mock-oneclick.ts";
+
 const WEB = resolve(import.meta.dirname, "..");
 const ROOT = resolve(WEB, "../..");
 const SIGNER_PORT = 8799;
 const WEB_PORT = 5199;
 const PAGES_PORT = 5198;
+const ONECLICK_PORT = 8797;
 /** The subpath GitHub Pages serves this repository's site under. */
 const PAGES_BASE = "/Spact/";
 const TYPES: Record<string, string> = {
@@ -75,6 +80,7 @@ export default async function globalSetup() {
       VITE_NEAR_RPC_URL: "https://rpc.invalid",
       VITE_VAULT_ID: "",
       VITE_DEV_SIGNER_URL: "",
+      VITE_ONECLICK_URL: "",
       VITE_SITE_URL: "https://example.test/Spact",
       VITE_REPO_URL: "https://example.test/repo",
     },
@@ -89,7 +95,9 @@ export default async function globalSetup() {
   // Builds the contracts on first run, so allow a while.
   const sandbox = spawn(join(ROOT, "scripts/start-demo-sandbox.sh"), [fixturePath], { stdio: ["ignore", "pipe", "inherit"] });
   await waitForOutput(sandbox, "READY", 900_000);
-  const fixture = JSON.parse(readFileSync(fixturePath, "utf8")) as { rpc_url: string; vault_id: string };
+  const fixture = JSON.parse(readFileSync(fixturePath, "utf8")) as { rpc_url: string; vault_id: string; token_id: string };
+  // stands in for 1Click (named as a mock everywhere it shows up); answers from the local chain
+  const oneClick = await startMockOneClick({ rpcUrl: fixture.rpc_url, vaultIds: () => [fixture.vault_id], tokenId: fixture.token_id, port: ONECLICK_PORT });
 
   const signer = spawn(process.execPath, ["--experimental-strip-types", "dev/dev-signer.ts", fixturePath], {
     cwd: WEB,
@@ -105,6 +113,10 @@ export default async function globalSetup() {
     VITE_NEAR_RPC_URL: fixture.rpc_url,
     VITE_VAULT_ID: fixture.vault_id,
     VITE_DEV_SIGNER_URL: `http://127.0.0.1:${SIGNER_PORT}`,
+    VITE_ONECLICK_URL: oneClick.url,
+    // the mock signs its answers with the published sandbox-only key; config.ts refuses it elsewhere
+    VITE_ONECLICK_SIGNER_KEY: MOCK_SIGNER_PUBLIC_KEY,
+    SPACT_MOCK_ONECLICK: oneClick.url,
     // a second network for the network switch; network.spec.ts keeps its hosts offline
     VITE_TESTNET_VAULT_ID: "vault.e2e.testnet",
     VITE_TESTNET_RPC_URL: "https://testnet-rpc.invalid",
@@ -120,6 +132,7 @@ export default async function globalSetup() {
   return async () => {
     await server.close();
     await new Promise((done) => pages.close(done));
+    await oneClick.close();
     await Promise.all([stop(signer), stop(sandbox)]);
   };
 }

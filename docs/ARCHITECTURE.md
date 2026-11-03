@@ -28,7 +28,7 @@ Status labels: **built** (code plus passing tests in this repo), **planned** (in
  OWNER PHONE: Telegram notifier (apps/notifier) [built]
    polls the vault -> plain-text alert with the exact terms + approval link -> follow-up when paid
 
- 1Click adapter (packages/intents) [built, mock only; no live call yet]
+ 1Click adapter (packages/intents) [built; tested on recorded live answers]
    quote request -> checked quote -> request_cross_chain_payment terms; status -> reconciliation (never re-credits)
 
  planned: API/indexer
@@ -96,8 +96,19 @@ React 19 + Vite 8 + Tailwind 4. No backend: it reads the vault directly over NEA
                -> poll get_request until the chain shows the result; only then report success
 ```
 
-- **Signers.** testnet/mainnet: `@hot-labs/near-connect` (wallets run in sandboxed iframes). sandbox: `dev/dev-signer.ts`, a localhost process holding the sandbox owner key that signs only approve/reject/execute on the demo vault.
-- **Routes.** `/` is the landing page (ADR-024); `?page=overview` is the dashboard; `?page=security` is the Security Lab; `?request=<id>` is the approval page (the Telegram and MCP deep link target); `?page=legal` is Privacy and terms. Missing paths get a branded `404.html` from Caddy (ADR-026). A `vault=` parameter that differs from the configured vault is refused.
+- **Signers.** testnet/mainnet: `@hot-labs/near-connect` (wallets run in sandboxed iframes). sandbox: `dev/dev-signer.ts`, a localhost process holding the sandbox owner key that signs only what the owner pages send on the local chain (ADR-033).
+- **Routes.** `/` is the landing page (ADR-024); `?page=overview` is the dashboard; `?page=manage` is the owner's tools (fund, pause, agents, agent key, rules); `?page=new-vault` creates a vault; `?page=crosschain` prices and allows 1Click routes; `?page=security` is the Security Lab; `?request=<id>` is the approval page (the Telegram and MCP deep link target); `?page=legal` is Privacy and terms. Missing paths get a branded `404.html` from Caddy (ADR-026). `vault=` picks one of the build's vaults; a vault the build does not list is shown only if it runs a known build (`src/contracts.ts`) with no access keys, otherwise refused.
+- **Owner pages (ADR-033).** Every transaction is built as data (`src/owner/actions.ts`) and shown on a review screen (`SignReview`) before the wallet is asked; on mainnet a confirmation box gates the Sign button. Creating a vault:
+
+```text
+wallet (owner):  CreateAccount + Transfer + AddKey(temporary full-access key made in this tab) -> name.<owner>
+this tab:        fetch public/contracts/spact_vault-p1.wasm, check sha256 against src/contracts.ts
+                 DeployContract + FunctionCall new(owner, agents, network, policy) + DeleteKey(temporary)
+                 signed with the temporary key, vault -> vault, waits for FINAL
+page:            view_account code_hash == manifest, view_access_key_list empty, get_config as asked
+```
+
+- **1Click from the page.** Through the Railway image's same-origin proxy `/1click/` (three paths only). The approval page compares 1Click's record of a cross-chain request's deposit address with the request before Approve works, checks the address's token registration, and after the deposit polls `GET /v0/status` every 5 s, linking both chains' transactions to explorers it picks itself.
 - **Dashboard.** Overview cards (waiting count, paused, policy version, stored requests); one card per allowlisted token with the vault's balance, today's budget (left, paid, reserved, reset time) and the limits; the open requests; agent activity (newest first, 50 per page, cards on phones); who can do what. It re-reads the chain every 15 s and signs nothing (ADR-021).
 - **Local demo.** `scripts/dev-sandbox.sh` runs `demo-sandbox` (a Rust binary in `contracts/integration-tests` that deploys a funded vault on a local node), the dev signer and the dev server.
 - **Browser tests.** `apps/web/e2e`, Playwright + Chromium against that same local setup, plus the production build served under `/Spact/` with no vault, the way GitHub Pages serves it.
@@ -105,7 +116,7 @@ React 19 + Vite 8 + Tailwind 4. No backend: it reads the vault directly over NEA
 
 ## MCP server (`apps/mcp`) [built]
 
-A local stdio server for the agent's host, on `@modelcontextprotocol/server` 2.3.1 (ADR-018). Two tools:
+A local stdio server for the agent's host, on `@modelcontextprotocol/server` 2.3.1 (ADR-018). Three tools (`request_cross_chain_payment` since ADR-033):
 
 ```text
 request_payment(token, amount_units, recipient, reason, request_id)
@@ -114,8 +125,14 @@ request_payment(token, amount_units, recipient, reason, request_id)
                 get_config network and agent list match
   -> sign request_direct_payment with that key, wait for FINAL
   -> {policy_decision, onchain_status, reason_code, explanation, tx_hash, review_url?}
+request_cross_chain_payment(token, amount_units, destination_asset, recipient, reason, request_id)
+  -> off unless ENABLE_1CLICK_LIVE=true; preflight also needs request_cross_chain_payment on the key
+  -> 1Click token list has the route; the owner's policy allows this route and recipient
+  -> live quote (refund to the vault) -> crossChainArgs: refuse unless it answers exactly what was asked
+  -> sign request_cross_chain_payment -> always AWAITING_APPROVAL, with the deposit address and review_url
 get_payment_status(request_id)
   -> get_request + final block time -> {source_status | NOT_FOUND, reason_code, expiry by chain time}
+  -> cross-chain and paid: + 1Click's status (reconcile), labelled as 1Click's report
 ```
 
 The same preflight runs at startup, and the server exits if it fails. Tool results use fixed sentences; the agent's `reason` text is never echoed back.
@@ -150,4 +167,4 @@ CI uploads every job's raw output as `report-*` artifacts. The `security-report`
 | Component | Role | Authority |
 |---|---|---|
 | API (Hono on Workers) | relay agent requests, index events, send notifications | none: on-chain state wins |
-| 1Click live calls and status polling (P1) | the adapter in `packages/intents` exists and is tested with a mock; nothing calls the live API yet | trusted off-chain quote, disclosed |
+| 1Click live use (P1) | the MCP tool, the cross-chain page and the approval page's check and tracking are built and tested against a mock 1Click and against live answers recorded on 2026-11-03; no live payment yet | trusted off-chain quote, signed by 1Click, disclosed |

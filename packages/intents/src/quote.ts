@@ -85,7 +85,8 @@ export function buildQuoteRequest(p: QuoteParams): QuoteRequest {
     refundType: "ORIGIN_CHAIN",
     recipient: p.recipient,
     recipientType: "DESTINATION_CHAIN",
-    deadline: p.deadline.toISOString(),
+    // whole seconds: the live API echoes the deadline it was sent, and "…:50.000Z" is the form it was seen in
+    deadline: new Date(Math.floor(p.deadline.getTime() / 1000) * 1000).toISOString(),
   };
 }
 
@@ -149,7 +150,8 @@ export function crossChainArgs(asked: QuoteRequest, raw: unknown, destinationCha
   // The answer must be to the exact question: a quote for another payee, asset, amount or refund
   // target is refused even if it looks better.
   for (const field of ECHOED) {
-    if (res.quoteRequest[field] !== asked[field]) throw new QuoteError("TERMS_CHANGED", `quote answers a different ${field}`);
+    const same = field === "deadline" ? Date.parse(res.quoteRequest.deadline) === Date.parse(asked.deadline) : res.quoteRequest[field] === asked[field];
+    if (!same) throw new QuoteError("TERMS_CHANGED", `quote answers a different ${field}`);
   }
   const deposit = res.quote.depositAddress;
   if (!deposit) throw new QuoteError("DEPOSIT_MISSING", "the quote has no deposit address");
@@ -166,7 +168,10 @@ export function crossChainArgs(asked: QuoteRequest, raw: unknown, destinationCha
   if (res.quote.amountIn !== asked.amount) throw new QuoteError("AMOUNT_CHANGED", "EXACT_INPUT quote with a different input amount");
   if (BigInt(res.quote.minAmountOut) === 0n) throw new QuoteError("MIN_OUT_INVALID", "the quote guarantees no output");
   if (!res.quote.deadline) throw new QuoteError("EXPIRED", "the quote has no deadline");
-  const deadlineMs = Date.parse(res.quote.deadline);
+  // Two deadlines: the one asked for, when 1Click starts refunding an unfinished swap, and the quote's own,
+  // when the deposit address goes inactive. Live, the second is three days after the first
+  // (test/fixtures/live/quote.ts). The vault must pay before the first, so it is bound to the earlier.
+  const deadlineMs = Math.min(Date.parse(res.quote.deadline), Date.parse(asked.deadline));
   if (deadlineMs <= now.getTime() + QUOTE_SAFETY_MARGIN_MS) throw new QuoteError("EXPIRED", "the quote is at or near its deadline");
   if (!CHAIN_RE.test(destinationChain)) throw new QuoteError("BAD_PARAMS", "invalid destination chain");
   const token = asked.originAsset.slice("nep141:".length);

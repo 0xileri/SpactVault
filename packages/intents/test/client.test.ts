@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { findRoute, liveOneClick, MockOneClick } from "../src/index.js";
+import { chainName, findRoute, liveOneClick, MockOneClick, oneClickOverHttp, txExplorerLink } from "../src/index.js";
 import { asked, DEPOSIT, quoteFor, SOL_USDC, statusFor, TOKEN, TOKENS } from "./fixtures.js";
 
 describe("1Click clients", () => {
@@ -39,5 +39,47 @@ describe("1Click clients", () => {
     expect(await mock.quote(asked())).toEqual(quoteFor(asked()));
     await expect(mock.status("unknown.near")).rejects.toThrow(/unknown deposit address/);
     expect(mock.calls.map((c) => c.method)).toEqual(["tokens", "tokens", "quote", "status"]);
+  });
+});
+
+describe("oneClickOverHttp", () => {
+  it("keeps a path prefix such as the web app's /1click proxy", async () => {
+    const seen: string[] = [];
+    const fake = (async (url: string) => {
+      seen.push(url);
+      return new Response("[]", { status: 200 });
+    }) as unknown as typeof fetch;
+    const api = oneClickOverHttp("/1click/", { fetch: fake });
+    await api.tokens();
+    await api.status("ab12");
+    expect(seen).toEqual(["/1click/v0/tokens", "/1click/v0/status?depositAddress=ab12"]);
+    const remote = oneClickOverHttp("https://spactvault.example/1click", { fetch: fake });
+    await remote.tokens();
+    expect(seen.at(-1)).toBe("https://spactvault.example/1click/v0/tokens");
+  });
+});
+
+describe("txExplorerLink", () => {
+  it("links known chains only, for hashes in that chain's format", () => {
+    expect(txExplorerLink("sol", "5h3kZr8DQ9k8s1v3Cw2n4e6R8t1y3u5i7o9p1a3s5d7f9g1h3j5k7m9z1x3c5v7b9")).toMatch(/^https:\/\/solscan\.io\/tx\//);
+    expect(txExplorerLink("base", `0x${"ab".repeat(32)}`)).toBe(`https://basescan.org/tx/0x${"ab".repeat(32)}`);
+    expect(txExplorerLink("base", "5h3kZr8DQ9k8s1v3Cw2n4e6R8t1y3u5i7o9p1a3s")).toBeNull();
+    expect(txExplorerLink("near", "RqphTo2Hy9ifsW7Y2PDXFM2A8gtcxu6GHdBuzfcP2oB")).toBe("https://nearblocks.io/txns/RqphTo2Hy9ifsW7Y2PDXFM2A8gtcxu6GHdBuzfcP2oB");
+    expect(txExplorerLink("evilchain", `0x${"ab".repeat(32)}`)).toBeNull();
+    expect(chainName("sol")).toBe("Solana");
+    expect(chainName("zz")).toBe("zz");
+  });
+});
+
+describe("token list", () => {
+  it("keeps the entries that parse, so one odd entry does not hide every route", () => {
+    const list = [
+      ...TOKENS,
+      { assetId: "nep245:v2_1.omni.hot.tg:56_11111111111111111111", decimals: 18, blockchain: "bsc", symbol: "A".repeat(40) },
+      { assetId: "has spaces", decimals: 6, blockchain: "sol", symbol: "BAD" },
+      "not even an object",
+    ];
+    expect(findRoute(list, TOKEN, SOL_USDC)).toMatchObject({ origin: { symbol: "TUSD" }, destination: { symbol: "USDC" } });
+    expect(findRoute({ not: "a list" }, TOKEN, SOL_USDC)).toBeNull();
   });
 });

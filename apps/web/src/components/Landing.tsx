@@ -256,7 +256,10 @@ function LiveSection({ config, live }: { config: AppConfig; live: Live }) {
               </>
             ) : null}
           </p>
-          <TextLink href={link("?page=overview")}>Open the dashboard</TextLink>
+          <div className="flex flex-wrap gap-6">
+            <TextLink href={link("?page=overview")}>Open the dashboard</TextLink>
+            <TextLink href={link("?page=new-vault")}>Create your own vault</TextLink>
+          </div>
         </div>
       </Container>
     </section>

@@ -17,6 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@noble/curves": "2.0.1",
     "@noble/hashes": "2.4.0",
     "@spact/shared": "workspace:*",
     "zod": "4.6.5"

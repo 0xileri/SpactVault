@@ -14,7 +14,7 @@ The first build session ran in a cloud container with a restricted network allow
 | `raw.githubusercontent.com` | yes | GitHub Action `action.yml` files checked |
 | `nearhackathon.com` | **no** | The owner pasted `HACKATHON.md` into the session; it is at the repo root with a provenance note. The live version was not fetched. |
 | `docs.near.org`, `docs.rs` | **no** | SDK behavior verified from crate source instead |
-| `docs.near-intents.org`, `1click.chaindefuser.com` | **no** (rechecked 2026-11-02) | 1Click shapes taken from the official SDK package on npm instead (see "NEAR Intents / 1Click") |
+| `docs.near-intents.org`, `1click.chaindefuser.com` | **no** (rechecked 2026-11-03; the owner recorded live answers from their machine, ADR-034) | 1Click shapes taken from the official SDK package on npm instead (see "NEAR Intents / 1Click") |
 | `rpc.testnet.near.org` | **no** | No testnet deployment from this environment |
 | `core.telegram.org` | **no** | Telegram not integrated yet |
 | `github.com` (anonymous git) | yes | NEAR docs source cloned from `github.com/near/docs` at `04d956c` (2026-10-24), which is what docs.near.org renders |
@@ -194,19 +194,34 @@ min_amount_out=4900000 quote_hash=sha256("quote")=6327245c...02b26 quote_expires
 | Auth | optional API key, sent as `Authorization: Bearer` (docs search: Bearer or X-API-Key) | the adapter sends it only if given; never in a browser |
 | Quote request | `dry`, `swapType` (`EXACT_INPUT`), `slippageTolerance` (basis points), `originAsset`, `depositType` (`ORIGIN_CHAIN`), `destinationAsset`, `amount` (smallest unit), `refundTo`, `refundType` (`ORIGIN_CHAIN`), `recipient`, `recipientType` (`DESTINATION_CHAIN`), `deadline` (ISO), `depositMode` (`SIMPLE`) | SDK types; matches AGENTS.md section 8 |
 | Quote response | `timestamp`, `signature`, `quoteRequest` (echo), `quote.depositAddress`, `quote.depositMemo` (some chains), `quote.amountIn`, `quote.amountOut`, `quote.minAmountOut`, `quote.deadline`, `quote.timeWhenInactive`, `quote.timeEstimate`. Dry quotes omit `depositAddress`, `deadline` and `timeWhenInactive` | SDK types |
-| Quote signature | "Signature of the 1Click service confirming the quote for the specific deposit address. Must be saved on the client side" | **no documented verification method or key**, so not used as authority (ADR-032) |
-| Status values | `KNOWN_DEPOSIT_TX`, `PENDING_DEPOSIT`, `INCOMPLETE_DEPOSIT`, `PROCESSING`, `SUCCESS`, `REFUNDED`, `FAILED`; `swapDetails.refundedAmount`, `depositedAmount`, `nearTxHashes` | SDK types; all treated as 1Click's report |
+| Quote signature | ed25519 over base58(sha256(sorted-key JSON of the signed request and quote fields plus `timestamp`)), with the manager key `ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc` (SDK 0.1.26 `src/quote-signature.ts`, read as data) | **verified on both recorded live quotes** (ADR-034); checked by the MCP tool, the approval page and the cross-chain page |
+| Status values | `KNOWN_DEPOSIT_TX`, `PENDING_DEPOSIT`, `INCOMPLETE_DEPOSIT`, `PROCESSING`, `SUCCESS`, `REFUNDED`, `FAILED`; `swapDetails.refundedAmount`, `depositedAmount`, `nearTxHashes`, `originChainTxHashes` and `destinationChainTxHashes` (`{hash, explorerUrl}`) | SDK types; all treated as 1Click's report. The site links tx hashes to explorers it chooses by chain name (`packages/intents/src/explorer.ts`), never to 1Click's `explorerUrl` |
+| Status before a deposit | `GET /v0/status` for a deposit address nothing was sent to | **live, 2026-11-03:** HTTP 200 `PENDING_DEPOSIT` with the full signed `quoteResponse`; many `swapDetails` fields are `null`. An address 1Click never issued: HTTP 404 |
+| CORS | not known | the hosted site does not depend on it: the Railway image proxies `/1click/` for `GET /v0/tokens`, `GET /v0/status` and `POST /v0/quote` only (apps/web/Caddyfile, ADR-033). GitHub Pages has no 1Click features |
+| Display fields | `quote.amountInFormatted`, `amountOutFormatted`, `amountInUsd`, `amountOutUsd` | SDK types; shown on the cross-chain page as 1Click's estimate (fees and price impact = in USD minus out USD), never used for a check |
 | NEAR asset ids | `nep141:<token contract>` (SDK README examples) | the vault's token must also appear in `GET /v0/tokens` with `blockchain: near` before use |
 | NEAR-origin deposit | a plain `ft_transfer` of the exact amount to `depositAddress` | **unverified**: the docs say the swap starts after the deposit, but whether the deposit account needs `storage_deposit`, and that a plain `ft_transfer` is detected, were not confirmed |
 | Testnet | none, per AGENTS.md section 8 (owner's check of 2026-10-23) | so every test here uses `MockOneClick` and a sandbox stand-in deposit account |
 
-The adapter is `packages/intents`. Its live client refuses to start unless `ENABLE_1CLICK_LIVE` is true. Its fixtures are synthetic, shaped by the SDK types and marked as such, not recorded from the live API.
+The adapter is `packages/intents`. Its live client refuses to start unless `ENABLE_1CLICK_LIVE` is true. Its fixtures are synthetic, shaped by the SDK types and marked as such, not recorded from the live API. The browser tests use `apps/web/e2e/mock-oneclick.ts`, a mock server named as such, that answers from the local chain and can be told to lie.
+
+**Live answers (2026-11-03, ADR-034).** The owner ran these with curl from their own machine, no API key, refunding to `vault.0xileri.near` and paying a placeholder Solana address. They are verbatim fixtures in `packages/intents/test/fixtures/live`.
+
+| Request | Answer |
+|---|---|
+| `GET /v0/tokens` | HTTP 200, 53,365 bytes. USDC on Solana is `nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near`, the id the code already used. The list itself was not recorded |
+| `POST /v0/quote`, dry, refund to `vault2.0xileri.near` (did not exist yet) | HTTP 400 `{"message":"Internal server error"}`; the same non-dry: the same |
+| `POST /v0/quote`, dry, refund to `vault.0xileri.near` | HTTP 201: 1 USDC in, 0.989801 USDC out, at least 0.979902, about 17 s, `withdrawFee` 10007 units; no deposit address; signature verifies |
+| `POST /v0/quote`, not dry | HTTP 201: deposit address `041951e1…87bc` (64-hex implicit account), at least 0.979928 out, quote `deadline` three days after the requested one; signature verifies |
+| `GET /v0/status` for that address, before any deposit | HTTP 200 `PENDING_DEPOSIT`, full signed quote, `swapDetails` nulls |
+
+What the answers changed in the code: null-tolerant status fields, the earlier of the two deadlines, whole-second deadlines compared as instants, `appFees`/`withdrawFee`/`refundFee` parsed and shown, 1Click's error message passed through, and the signature check (ADR-034). Still to record: the token list, and any answer after a real deposit.
 
 ## Not integrated yet
 
 | Integration | Status | Notes |
 |---|---|---|
-| NEAR Intents / 1Click | adapter and vault route built and tested locally (P1, ADR-032); **no live call** | see "NEAR Intents / 1Click" above |
+| NEAR Intents / 1Click | adapter, vault route, MCP tool and website pages built and tested locally (P1, ADR-032, ADR-033); live quote and status answers recorded and tested (ADR-034); **no live payment yet** | see "NEAR Intents / 1Click" above |
 | Telegram Bot API | not started | |
 
 ## Hackathon submission (from `HACKATHON.md`, owner copy of 2026-10-23)

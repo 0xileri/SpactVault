@@ -16,6 +16,10 @@ export interface McpConfig {
   approvalUrl: string | null;
   /** Explorer URL template with a `{hash}` placeholder, or null when there is no explorer. */
   explorerTxUrl: string | null;
+  /** The live 1Click API, for cross-chain requests. null: off (ENABLE_1CLICK_LIVE is not true). */
+  oneClick: { baseUrl: string; jwt: string | null } | null;
+  /** Directory where each cross-chain quote is saved in full (with its signature), or null. */
+  quoteDir: string | null;
 }
 
 export class ConfigError extends Error {}
@@ -79,7 +83,15 @@ export function parseConfig(env: Record<string, string | undefined>): McpConfig 
     throw new ConfigError("SPACT_EXPLORER_TX_URL must contain {hash}");
   }
 
-  return { network, rpcUrl: rpc.toString(), vaultId, agentId, agentKeyFile, approvalUrl, explorerTxUrl };
+  let oneClick: McpConfig["oneClick"] = null;
+  if (env.ENABLE_1CLICK_LIVE === "true") {
+    const base = parseUrl(env.ONE_CLICK_BASE_URL || "https://1click.chaindefuser.com", "ONE_CLICK_BASE_URL");
+    if (base.protocol !== "https:") throw new ConfigError("ONE_CLICK_BASE_URL must use https");
+    oneClick = { baseUrl: base.toString().replace(/\/$/, ""), jwt: env.ONE_CLICK_JWT || null };
+  }
+  const quoteDir = env.SPACT_QUOTE_DIR || null;
+
+  return { network, rpcUrl: rpc.toString(), vaultId, agentId, agentKeyFile, approvalUrl, explorerTxUrl, oneClick, quoteDir };
 }
 
 /**

@@ -6,8 +6,11 @@ import {
   paymentRequestSchema,
   viewAccessKey,
   viewFunction,
+  type CrossChainTerms,
   type PaymentOutcome,
   type PaymentRequest,
+  type Policy,
+  policySchema,
   type ReasonCode,
 } from "@spact/shared";
 import { Account, actions, JsonRpcProvider } from "near-api-js";
@@ -23,6 +26,15 @@ export interface PaymentArgs {
   reason: string;
 }
 
+export interface CrossChainPaymentArgs {
+  request_id: string;
+  token: string;
+  amount: string;
+  deposit_account: string;
+  reason: string;
+  terms: CrossChainTerms;
+}
+
 export type SubmitResult =
   /** The vault answered: the request was blocked, stored for approval, or paid (or failed to pay). */
   | { kind: "outcome"; outcome: PaymentOutcome; txHash: string }
@@ -33,9 +45,15 @@ export type SubmitResult =
 
 /** Everything the MCP tools need from the chain. Injected so the tools can be tested without one. */
 export interface VaultClient {
-  /** Fails unless the key, the vault's network and the agent's membership all check out. */
-  preflight(): Promise<void>;
+  /**
+   * Fails unless the key, the vault's network and the agent's membership all check out. With `needs`, the
+   * key must also be allowed to call that vault method.
+   */
+  preflight(needs?: string): Promise<void>;
   requestPayment(args: PaymentArgs): Promise<SubmitResult>;
+  /** request_cross_chain_payment: always waits for the owner (P1). */
+  requestCrossChain(args: CrossChainPaymentArgs): Promise<SubmitResult>;
+  getPolicy(): Promise<Policy>;
   getRequest(requestId: string): Promise<PaymentRequest | null>;
   /** Timestamp of the latest final block, so expiry is judged by chain time, not the local clock. */
   nowNs(): Promise<bigint>;
@@ -67,12 +85,42 @@ export function decodeSuccessValue(value: string): PaymentOutcome {
   return paymentOutcomeSchema.parse(JSON.parse(text));
 }
 
+/** Sends one vault call with the agent's key and reads the vault's answer. Never throws. */
+async function submit(account: Account, vaultId: string, method: string, args: Record<string, unknown>): Promise<SubmitResult> {
+  let result: unknown;
+  try {
+    result = await account.signAndSendTransaction({
+      receiverId: vaultId,
+      actions: [actions.functionCall(method, args, REQUEST_GAS, 0n)],
+      throwOnFailure: false,
+      // wait until the transfer and its callback are in final blocks, so SETTLED is never optimistic
+      waitUntil: "FINAL",
+    });
+  } catch (e) {
+    return { kind: "unknown", message: (e as Error).message.slice(0, 300), txHash: null };
+  }
+  const txHash = isRecord(result) && isRecord(result.transaction) ? result.transaction.hash : undefined;
+  const status = isRecord(result) ? result.status : undefined;
+  if (typeof txHash !== "string" || !isRecord(status)) {
+    return { kind: "unknown", message: "unexpected transaction result shape", txHash: null };
+  }
+  if (typeof status.SuccessValue === "string") {
+    try {
+      return { kind: "outcome", outcome: decodeSuccessValue(status.SuccessValue), txHash };
+    } catch {
+      return { kind: "unknown", message: "the vault's answer could not be read", txHash };
+    }
+  }
+  const message = panicMessage(status.Failure) ?? `transaction failed: ${JSON.stringify(status.Failure).slice(0, 300)}`;
+  return { kind: "rejected", reasonCode: reasonCodeOf(message), message, txHash };
+}
+
 export function createVaultClient(config: McpConfig, key: AgentKey): VaultClient {
   const account = new Account(key.accountId, new JsonRpcProvider({ url: config.rpcUrl }), key.privateKey);
 
   return {
-    async preflight() {
-      const problem = keyProblem(await viewAccessKey(config.rpcUrl, key.accountId, key.publicKey), config.vaultId);
+    async preflight(needs) {
+      const problem = keyProblem(await viewAccessKey(config.rpcUrl, key.accountId, key.publicKey), config.vaultId, needs ?? null);
       if (problem) throw new AgentKeyError(`${key.accountId} key ${key.publicKey}: ${problem}`);
       const vault = configViewSchema.parse(await viewFunction(config.rpcUrl, config.vaultId, "get_config"));
       if (vault.network !== config.network) {
@@ -83,33 +131,12 @@ export function createVaultClient(config: McpConfig, key: AgentKey): VaultClient
       }
     },
 
-    async requestPayment(args) {
-      let result: unknown;
-      try {
-        result = await account.signAndSendTransaction({
-          receiverId: config.vaultId,
-          actions: [actions.functionCall("request_direct_payment", { ...args }, REQUEST_GAS, 0n)],
-          throwOnFailure: false,
-          // wait until the transfer and its callback are in final blocks, so SETTLED is never optimistic
-          waitUntil: "FINAL",
-        });
-      } catch (e) {
-        return { kind: "unknown", message: (e as Error).message.slice(0, 300), txHash: null };
-      }
-      const txHash = isRecord(result) && isRecord(result.transaction) ? result.transaction.hash : undefined;
-      const status = isRecord(result) ? result.status : undefined;
-      if (typeof txHash !== "string" || !isRecord(status)) {
-        return { kind: "unknown", message: "unexpected transaction result shape", txHash: null };
-      }
-      if (typeof status.SuccessValue === "string") {
-        try {
-          return { kind: "outcome", outcome: decodeSuccessValue(status.SuccessValue), txHash };
-        } catch {
-          return { kind: "unknown", message: "the vault's answer could not be read", txHash };
-        }
-      }
-      const message = panicMessage(status.Failure) ?? `transaction failed: ${JSON.stringify(status.Failure).slice(0, 300)}`;
-      return { kind: "rejected", reasonCode: reasonCodeOf(message), message, txHash };
+    requestPayment: (args) => submit(account, config.vaultId, "request_direct_payment", { ...args }),
+
+    requestCrossChain: (args) => submit(account, config.vaultId, "request_cross_chain_payment", { ...args }),
+
+    async getPolicy() {
+      return policySchema.parse(await viewFunction(config.rpcUrl, config.vaultId, "get_policy"));
     },
 
     async getRequest(requestId) {

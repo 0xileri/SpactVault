@@ -5,11 +5,11 @@ import { z } from "zod";
  * 1Click API shapes, as far as SpactVault uses them.
  *
  * Source: the generated types of `@defuse-protocol/one-click-sdk-typescript` 0.1.26 (published
- * 2026-09-22, read 2026-11-02), which the SDK builds from the API's OpenAPI spec. The docs site and
- * the API host were unreachable from the build environment, so nothing here was checked against a
- * live response (docs/INTEGRATIONS.md). Everything the API returns is untrusted until parsed here;
- * unknown extra fields are allowed so a new API version does not break parsing, but every field the
- * vault depends on is checked.
+ * 2026-09-22, read 2026-11-02), which the SDK builds from the API's OpenAPI spec, then checked against
+ * live answers the owner recorded on 2026-11-03 (test/fixtures/live). Those showed fields the SDK types
+ * call optional arriving as `null` (status `swapDetails`), so optional fields here accept null too.
+ * Everything the API returns is untrusted until parsed here; unknown extra fields are allowed so a new
+ * API version does not break parsing, but every field the vault depends on is checked.
  */
 
 const uintString = z.string().regex(/^(0|[1-9]\d*)$/, "not a canonical integer string");
@@ -37,7 +37,18 @@ export const tokenSchema = z
   })
   .loose();
 export type OneClickToken = z.infer<typeof tokenSchema>;
-export const tokenListSchema = z.array(tokenSchema).max(5000);
+/**
+ * The token list, keeping only the entries that parse. The live list is 53 kB of entries for many chains
+ * (2026-11-03) and was not recorded; one odd entry (a long symbol, an unusual chain name) must not hide every
+ * route. An entry that does not parse is simply never offered. Anything but an array still fails.
+ */
+export const tokenListSchema = z
+  .array(z.unknown())
+  .max(5000)
+  .transform((items) => items.flatMap((item) => {
+    const t = tokenSchema.safeParse(item);
+    return t.success ? [t.data] : [];
+  }));
 
 /** The `POST /v0/quote` body SpactVault sends. Only the fields it sets; the API defines more. */
 export interface QuoteRequest {
@@ -56,6 +67,9 @@ export interface QuoteRequest {
   deadline: string;
 }
 
+/** A fee 1Click adds to a quote, in basis points of `amountIn`. The live API adds one even when none is asked for. */
+export const appFeeSchema = z.object({ recipient: z.string().max(128), fee: z.number().int().min(0).max(10_000) }).loose();
+
 export const quoteRequestEchoSchema = z
   .object({
     dry: z.boolean(),
@@ -70,6 +84,7 @@ export const quoteRequestEchoSchema = z
     recipient: z.string(),
     recipientType: z.string(),
     deadline: z.string(),
+    appFees: z.array(appFeeSchema).max(16).nullish(),
   })
   .loose();
 
@@ -90,11 +105,22 @@ export const quoteResponseSchema = z
         deadline: isoTime.optional(),
         timeWhenInactive: isoTime.optional(),
         timeEstimate: z.number().nonnegative().optional(),
+        // display values 1Click adds; never used for any check
+        amountInFormatted: z.string().max(64).optional(),
+        amountOutFormatted: z.string().max(64).optional(),
+        amountInUsd: z.string().max(64).optional(),
+        amountOutUsd: z.string().max(64).optional(),
+        // already taken out of amountOut (SDK), in the destination asset's smallest unit
+        withdrawFee: uintString.nullish(),
+        refundFee: uintString.nullish(),
       })
       .loose(),
   })
   .loose();
 export type QuoteResponse = z.infer<typeof quoteResponseSchema>;
+
+/** A transaction 1Click reports. Its `explorerUrl` is never linked: pages build their own links from the hash. */
+const txDetailsSchema = z.object({ hash: z.string().min(1).max(128), explorerUrl: z.string().max(512).nullish() }).loose();
 
 /** `GET /v0/status?depositAddress=...` response. Every value in it is 1Click's report, not chain state. */
 export const statusResponseSchema = z
@@ -104,13 +130,16 @@ export const statusResponseSchema = z
     quoteResponse: quoteResponseSchema,
     swapDetails: z
       .object({
-        nearTxHashes: z.array(z.string().max(128)).max(64).optional(),
-        refundedAmount: uintString.optional(),
-        depositedAmount: uintString.optional(),
-        amountOut: uintString.optional(),
+        // the live API sends null, not an absent field, for what has not happened yet
+        nearTxHashes: z.array(z.string().max(128)).max(64).nullish(),
+        originChainTxHashes: z.array(txDetailsSchema).max(64).nullish(),
+        destinationChainTxHashes: z.array(txDetailsSchema).max(64).nullish(),
+        refundedAmount: uintString.nullish(),
+        depositedAmount: uintString.nullish(),
+        amountOut: uintString.nullish(),
       })
       .loose()
-      .optional(),
+      .nullish(),
   })
   .loose();
 export type StatusResponse = z.infer<typeof statusResponseSchema>;
