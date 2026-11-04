@@ -1,13 +1,14 @@
 import type { ReactNode } from "react";
 
 import type { SiteConfig } from "../config.js";
+import { Card, PageHeader } from "./ui.js";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="border-t border-line pt-8">
-      <h2 className="text-xl font-semibold">{title}</h2>
-      <ul className="mt-4 space-y-3 text-base leading-relaxed text-zinc-700">{children}</ul>
-    </section>
+    <Card className="sm:p-8">
+      <h2 className="text-xl font-semibold text-ink">{title}</h2>
+      <ul className="mt-4 list-disc space-y-3 pl-5 text-base leading-relaxed text-zinc-700 marker:text-brand/50">{children}</ul>
+    </Card>
   );
 }
 
@@ -15,11 +16,8 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export function Legal({ config }: { config: SiteConfig }) {
   const rpcHost = new URL(config.rpcUrl).host;
   return (
-    <article className="max-w-2xl space-y-8 pb-12" data-testid="legal">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Privacy and terms</h1>
-        <p className="mt-3 text-base text-zinc-600">What this site does with your data, and what it does not promise.</p>
-      </div>
+    <article className="mx-auto max-w-3xl space-y-6 pb-12" data-testid="legal">
+      <PageHeader eyebrow="Plain words · not a legal opinion" title="Privacy and terms" lede="What this site does with your data, and what it does not promise." />
       <Section title="Privacy">
         <li>This site sets no cookies and runs no analytics or tracking scripts.</li>
         <li>

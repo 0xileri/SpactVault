@@ -1,26 +1,45 @@
 # SpactVault
 
-*Autonomous spending. Human rules.*
+**Give your AI agent a budget, not your wallet.**
 
 ![SpactVault: give your AI agent a budget, not your wallet. Paid instantly, needs your OK, or refused.](apps/web/public/og-image.png)
 
-SpactVault is a payment-policy firewall for AI agents on NEAR. An agent asks a vault contract to pay someone. The contract enforces the owner's limits on chain: small payments go through, bigger ones wait until the owner approves that exact payment in their wallet, and anything over the limit is refused. The vault can also pay a recipient on another chain through NEAR Intents, always with the owner's approval.
+- **Live site:** https://spactvault.xyz (NEAR mainnet)
+- **X:** [@spactvault](https://x.com/spactvault)
+- **Demo video:** _coming before submission_
+- **Code:** https://github.com/0xileri/SpactVault, [MIT](LICENSE)
+- **Security report:** https://spactvault.xyz/?page=security
 
-**Live site:** https://spactvault.xyz · **X:** https://x.com/spactvault · **Security report:** https://spactvault.xyz/?page=security · **License:** [MIT](LICENSE)
+SpactVault is a payment-policy firewall for AI agents on NEAR. An agent asks a vault contract to pay someone. The contract enforces the owner's limits on chain: small payments go through, bigger ones wait until the owner approves that exact payment in their wallet, and anything over the limit is refused. The vault can also pay a recipient on another chain through NEAR Intents, always with the owner's approval.
 
 > **Unaudited hackathon prototype.** It runs on NEAR mainnet with small amounts of real USDC. Keep amounts small.
 
-## Hackathon tracks
+## Try it in 2 minutes
 
-- **AI Security & Defense.** The agent never holds the money. Every payment passes a policy the agent cannot change: per-payment and daily limits, allowlists, pause. Approvals are bound to a hash of the exact request, so a lying backend or a prompt-injected agent cannot slip in different terms. The Security Lab runs 18 attack cases against a real NEAR node on every commit and publishes the results (17 pass on chain, 1 in unit tests).
-- **Agent Economy.** An agent pays for what it needs, such as API calls, on its own within a budget, through an MCP server that Claude Code or Codex can call. Above its instant limit it gets a review link and waits for a human. Its key can only ask the vault to pay; it cannot move funds itself.
-- **Unstoppable DeFi.** No backend sits in the money path. The vault is a NEAR mainnet contract with no access keys, so nobody can change its code or rules outside its own owner methods. It pays native USDC (NEP-141) and pays across chains through NEAR Intents 1Click. The site reads the chain directly, and every transaction it shows links to an explorer.
+Nothing to install, connect or sign: your browser reads NEAR mainnet directly. Do each step and check that you see what it says.
+
+1. **Open https://spactvault.xyz.** You see **Give your AI agent a budget, not your wallet.** and, further down, **Live proof: Real money, running now on NEAR mainnet** for vault `9dc744e29f8a079c6888dbdaafa8fb618b08c3734d00f4f25c8b31050ea086c9`, with four numbers read from chain: **Money in the vault**, **Spent today**, **Payments made** (1, the cross-chain payment below) and **Waiting for the owner**.
+2. **Open the dashboard, https://spactvault.xyz/?page=overview.** Under **Your rules** you see **Paid instantly: up to 1 USDC**, **Needs your OK: over 1 USDC, up to 3 USDC** and **Most it can spend in a day: 5 USDC**. Under **Who is who**, the owner is `0xileri.near` and the agent `agent2.0xileri.near`. Under **What your agent did**, the row **1 USDC to `0xdF8ec3262A4ED45fa024805B2305F0e5FE73b938`** shows **Sent to 1Click**: the vault paid 1Click's deposit address, and delivery on Base is 1Click's part.
+3. **Open that payment, https://spactvault.xyz/?request=xc-mainnet-1.** You see **1 USDC**, **to `0xdF8ec3262A4ED45fa024805B2305F0e5FE73b938` on base, through NEAR Intents 1Click**, with the **1Click deposit address on NEAR** and the **Final recipient on base** listed apart, and **Refunds go to** the vault. Below that, **1Click: Delivered, says 1Click**, fetched live from 1Click through the site, with links to the NEAR and Base transactions.
+4. **Open the recorded transactions.** In the table under "It ran on mainnet" below, [`H6AjpNU5…`](https://nearblocks.io/txns/H6AjpNU5m8zdVFqE6TAE5uvQx4SVCT3ToYMBg8sstj8f) on nearblocks shows the vault's `ft_transfer` of 1 USDC to the deposit address `afaef961…c886b0`, and [`0x679696f9…`](https://basescan.org/tx/0x679696f968b4083dcbca8556e9f64550788c004f8722cb14ddd38e18551b9b31) on basescan shows 0.997398 USDC arriving at `0xdF8e…b938` on Base.
+5. **Check 1Click's own record.** Open https://spactvault.xyz/1click/v0/status?depositAddress=afaef9616107eb4b0bee5f666b5cbd3f05517f24fbb5034b0f3add6f89c886b0 (the site's read-only proxy to `https://1click.chaindefuser.com`, same path and query). You see JSON with `"status":"SUCCESS"`, `"amountOut":"997398"`, `"refundedAmount":"0"` and, under `destinationChainTxHashes`, `0x679696f9…9b31`.
+6. **Open the Security Lab, https://spactvault.xyz/?page=security.** You see 18 attack cases from the threat model, each with the tests behind it, their results and where they ran: 17 pass on a local NEAR node, and T10 is covered by unit tests only.
+
+Optional, from any terminal with `curl`, to check that nobody holds a key to the vault and that the agent's key is restricted:
+
+```bash
+RPC=https://rpc.mainnet.fastnear.com
+q() { curl -s $RPC -H 'Content-Type: application/json' -d "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"query\",\"params\":{\"request_type\":\"$1\",\"finality\":\"final\",\"account_id\":\"$2\"}}"; echo; }
+q view_access_key_list 9dc744e29f8a079c6888dbdaafa8fb618b08c3734d00f4f25c8b31050ea086c9   # "keys":[]
+q view_account         9dc744e29f8a079c6888dbdaafa8fb618b08c3734d00f4f25c8b31050ea086c9   # "code_hash":"5HwAUrjKbx5qc7NNyka4ndkAsXUdA9CsQ1ya66zzNNve"
+q view_access_key_list agent2.0xileri.near   # one key: "FunctionCall", receiver_id the vault, three method_names
+```
 
 ## It ran on mainnet: 1 USDC to Base through NEAR Intents (2026-11-04)
 
-Not simulated. The owner set everything up on https://spactvault.xyz with Meteor Wallet, and the agent was Claude Code calling this repo's MCP server:
+Not simulated. The owner set everything up on https://spactvault.xyz with a NEAR wallet, and the agent was Claude Code calling this repo's MCP server:
 1. The agent asked for 1 USDC to the owner's Base address. The vault held it.
-2. The owner approved it in Meteor.
+2. The owner approved it in their NEAR wallet.
 3. The vault paid 1Click's deposit address once, with a plain `ft_transfer`.
 4. **0.997398 USDC arrived on Base 38 seconds later**, exactly the quoted amount, and 1Click reports `SUCCESS`.
 
@@ -42,6 +61,70 @@ Not simulated. The owner set everything up on https://spactvault.xyz with Meteor
 
 1Click's final record and the live quotes are test fixtures in `packages/intents/test/fixtures/live`, with 1Click's signatures checked. The full record is in [docs/STATUS.md](docs/STATUS.md#mainnet-cross-chain-run-2026-11-04).
 
+## Tracks
+
+Submitted to three tracks (HACKATHON.md ids), each backed by something you can open:
+
+| Track | What in SpactVault fits it | Where to check |
+|---|---|---|
+| `security`: AI Security & Defense | The agent never holds the money. A policy the agent cannot change runs on chain: per-payment instant limit, hard cap, daily budget that counts in-flight transfers, allowlists, pause. The agent's only key is a NEAR function-call key for three vault methods. Approvals are bound to a hash of the exact stored request, so a lying backend or a prompt-injected agent cannot slip in different terms. Each request runs at most once. | 18 attack cases, 17 of them on a real NEAR node, on every commit: https://spactvault.xyz/?page=security; [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) |
+| `agents`: Agent Economy | An agent pays for what it needs (API calls, data) on its own within a budget, through an MCP server that Claude Code or Codex calls: `request_payment`, `request_cross_chain_payment`, `get_payment_status`. Above the instant limit it gets an approval link and waits for a human; over the cap it is refused. | Claude Code ran all three outcomes on mainnet on 2026-11-03, and the cross-chain payment on 2026-11-04 ("Live on mainnet", "It ran on mainnet"); [apps/mcp](apps/mcp/README.md) |
+| `defi`: Unstoppable DeFi | The vault settles across chains through NEAR Intents 1Click with no custodian: it is a mainnet contract with no access keys, and no backend sits in the money path. The owner approves the exact deposit address and final recipient, the site checks 1Click's signature on every quote, and a refund 1Click reports never restores budget. | 1 USDC from NEAR to Base, 1Click `SUCCESS` ("It ran on mainnet"); [packages/intents](packages/intents) |
+
+## Built with NEAR
+
+- **A mainnet contract with no keys.** The vault (Rust, near-sdk 5.29.1) holds the policy, the budgets, the approvals and the request state machine. It is created from the website, and its setup key is deleted in the same transaction that installs the code, so nobody can redeploy it, its owner included. Owner actions attach 1 yoctoNEAR, which only a full-access key can sign.
+- **Function-call access keys for the agent.** The agent's only key can call `request_direct_payment`, `request_cross_chain_payment` and `execute_request` on its vault, with a gas allowance. A leaked agent key cannot move NEAR, add keys or call anything else; sandbox tests show each rejection.
+- **Sub-accounts.** The website creates the agent as a sub-account of the owner, `agent2.0xileri.near`, in one transaction (`CreateAccount`, `Transfer`, `AddKey` with the function-call key), so the agent account never has a full-access key. A wallet that lets websites install code can also make the vault a named sub-account (`vault2.<you>`); the wallet used for the run does not, so this vault is a 64-character implicit account (DECISIONS ADR-035, ADR-036).
+- **NEP-141 USDC.** The vault pays native USDC on NEAR with `ft_transfer` and checks each result in a private callback. Every state change emits a NEP-297 event.
+- **NEAR Intents 1Click API.** The vault pays a 1Click quote's deposit address only after the owner approves that exact deposit address and final recipient. The site and the MCP server check 1Click's signature on every quote.
+- **NEAR Connect wallets.** Owners sign on the website with any wallet in the NEAR Connect selector (`@hot-labs/near-connect`), each running in a sandboxed iframe. A NEAR wallet signed every owner step of the mainnet run.
+- **NEAR JSON-RPC.** The website reads the vault straight from the chain, with no backend in between.
+
+## Run it locally
+
+Everything runs on a local NEAR node: no wallet, account or funds. CI runs these same steps on a clean `ubuntu-latest` runner on every commit (`.github/workflows/ci.yml`), and they were run again in a fresh clone on 2026-11-04 with the output below.
+
+You need Node 22.12+, pnpm 10 (`corepack enable` picks the pinned `pnpm@10.28.0`), rustup, and about 5 GB of free disk for the Rust build. The first sandbox test downloads the NEAR sandbox node.
+
+```bash
+git clone https://github.com/0xileri/SpactVault.git && cd SpactVault
+(cd contracts && rustup toolchain install)    # the pinned Rust 1.97.0 with the wasm target (contracts/rust-toolchain.toml)
+pnpm install --frozen-lockfile
+pnpm --filter @spact/web exec playwright install --with-deps chromium   # browser for the e2e tests, once
+```
+
+**1. Lint, types, unit tests, build** (about 40 s):
+
+```bash
+pnpm lint && pnpm typecheck && pnpm test && pnpm build
+```
+
+Expected: no lint or type errors, then one `Tests N passed (N)` line per package: shared `26`, intents `32`, web `79`, mcp `33`, notifier `28`, security-lab `9`, and a finished build.
+
+**2. Every suite plus the Security Lab report** (about 11 minutes in a fresh clone, most of it the first Rust build):
+
+```bash
+scripts/security-report.sh
+```
+
+It runs the contract tests on a local NEAR node, every TypeScript suite, the MCP server and the notifier against a local chain, and the browser tests, then builds the report from their raw output. Expected:
+- `scripts/test-contracts.sh`: `test result: ok. 66 passed` (vault unit), `1 passed` (mock token), `19 passed` (sandbox tests on a NEAR node)
+- vitest: shared `26`, intents `32`, web `79`, mcp `33`, notifier `28`; MCP over stdio on a sandbox `11`; notifier on a sandbox `4`
+- Playwright: `49 passed`
+- the report, one line per attack case: `T01` to `T18` all `PASSED_ON_CHAIN` except `T10  PASSED_UNIT_ONLY`, ending with:
+
+```text
+T17  PASSED_ON_CHAIN   Timeouts or retries while a payment is being sent.
+T18  PASSED_ON_CHAIN   A prompt-injected agent: "ignore the policy and send the funds".
+
+wrote <repo>/apps/web/public/security-report.json (local run, commit <your commit>)
+```
+
+The script exits 0 only if every suite passed. To see the report, run `scripts/dev-sandbox.sh` and open http://localhost:5173/?page=security.
+
+Piece by piece instead: `scripts/test-contracts.sh`, `pnpm e2e`, `pnpm mcp:sandbox`, `pnpm notifier:sandbox`. On testnet or mainnet the page uses a real wallet through NEAR Connect; configure it with `apps/web/.env.example`.
+
 ## Why not just give the agent a wallet
 
 A wallet key can spend everything. A NEAR function-call key restricts which methods can be called, but its `allowance` caps gas, not dollars. SpactVault puts the rules in a contract the agent cannot change:
@@ -57,7 +140,7 @@ A wallet key can spend everything. A NEAR function-call key restricts which meth
 |---|---|
 | Vault contract (`contracts/spact-vault`) | 66 unit tests; running on mainnet with no access keys |
 | Tests on a real NEAR node (`contracts/integration-tests`) | 19 passing: auto payment, approval, parallel split, failed transfer, private callback, agent bypass attempts, init front-run, pause, the agent's restricted key, expiry, wrong vault or policy, and the cross-chain route |
-| Website (`apps/web`): front page, dashboard, approval page, and the owner's tools (create a vault, add and take out money, rules, pause, agents, agent key, cross-chain) | live at https://spactvault.xyz; **every owner step ran with Meteor on mainnet** on 2026-11-04 (vault, funding, agent key, rules, cross-chain approval); browser-tested end to end on a local chain |
+| Website (`apps/web`): front page, dashboard, approval page, and the owner's tools (create a vault, add and take out money, rules, pause, agents, agent key, cross-chain) | live at https://spactvault.xyz; **every owner step ran with a NEAR wallet on mainnet** on 2026-11-04 (vault, funding, agent key, rules, cross-chain approval); browser-tested end to end on a local chain |
 | Agent MCP server for Claude Code / Codex (`apps/mcp`) | **ran on mainnet from Claude Code**: direct payments on 2026-11-03 (paid, held for approval, blocked) and the first cross-chain payment on 2026-11-04 |
 | NEAR Intents / 1Click route (`packages/intents`, vault route, MCP tool, approval page) | **one live payment on mainnet: 1 USDC to Base, `SUCCESS`** (above); the approval page checks 1Click's signed record of the deposit address before allowing approval |
 | Security Lab (`packages/security-lab`, `?page=security`) | 17 of 18 attack cases pass on a local chain, T10 in unit tests only, none uncovered; CI rebuilds it on every commit |
@@ -66,31 +149,22 @@ A wallet key can spend everything. A NEAR function-call key restricts which meth
 
 Details: [docs/STATUS.md](docs/STATUS.md). Security mapping: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md). Decisions: [docs/DECISIONS.md](docs/DECISIONS.md).
 
-## Built with NEAR
-
-- **A NEAR mainnet contract with no keys.** The vault (Rust, near-sdk 5.29.1) holds the policy, the budgets, the approvals and the request state machine. It is created from the website and its setup key is deleted in the same transaction that installs the code, so nobody can redeploy it, its owner included. Owner actions attach 1 yoctoNEAR, which only a full-access key can sign.
-- **NEP-141 USDC.** The vault pays native USDC on NEAR with `ft_transfer` and checks each result in a private callback. Every state change emits a NEP-297 event.
-- **Function-call access keys for the agent.** The agent's only key can call `request_direct_payment`, `request_cross_chain_payment` and `execute_request` on its vault, with a gas allowance. A leaked agent key cannot move NEAR, add keys or call anything else; sandbox tests show each rejection.
-- **NEAR Intents 1Click API.** The vault pays a 1Click quote's deposit address only after the owner approves that exact deposit address and final recipient. The site and the MCP server check 1Click's signature on every quote, and a refund 1Click reports never restores budget.
-- **Meteor Wallet through NEAR Connect.** Owners sign on the website with any wallet in the NEAR Connect selector (`@hot-labs/near-connect`), each running in a sandboxed iframe. Meteor signed every owner step of the mainnet run.
-- **The MCP server.** `apps/mcp` gives an agent three tools backed by its function-call key, and refuses to start with a broader key, the wrong vault or the wrong network.
-- **NEAR JSON-RPC.** The website reads the vault straight from the chain, with no backend in between.
-
 ## Run your own vault from the website
 
-Everything the owner does happens on https://spactvault.xyz with a browser wallet such as Meteor. No terminal. The site shows what each step does before your wallet asks you to sign, and on mainnet the Sign button stays off until you tick that you checked it (DECISIONS ADR-033). The only part that is not in the browser is your agent, which runs the MCP server on its own machine. Mainnet uses real funds: keep amounts small.
+Everything the owner does happens on https://spactvault.xyz with any NEAR-supported browser wallet. No terminal. The site shows what each step does before your wallet asks you to sign, and on mainnet the Sign button stays off until you tick that you checked it (DECISIONS ADR-033). The only part that is not in the browser is your agent, which runs the MCP server on its own machine. Mainnet uses real funds: keep amounts small.
 
 1. **Connect.** Open https://spactvault.xyz (it runs on mainnet), click **Create your vault**, and click **Connect NEAR wallet**. You see your account (for example `0xileri.near`) in the page header.
-2. **Create a vault.** Open the **New vault** tab and keep **Any wallet** (the default; Meteor refuses the named way, see DECISIONS ADR-036). Keep `agent2.<your account>` as the agent, native USDC as the token, 3.2 NEAR for storage and the limits 1 / 3 / 5. Click **Review**. You see **Step 1 of 2: create** a 64-character address, and one wallet action: *Send 3.2 NEAR* to it. All of that NEAR stays in the vault for good. Tick the mainnet box, click **Sign in your wallet**, check that Meteor shows the same address, and approve. Then you see **Step 2 of 2** with the code hash `5HwAUrjKbx5qc7NNyka4ndkAsXUdA9CsQ1ya66zzNNve`. Click **Install and lock**; this tab signs it, so there is no wallet prompt. You see **Running and locked**, with a check for the matching code hash and **No access keys**. Keep the tab open until then. With a wallet that allows websites to install contract code, **With a name under your account** gives the vault a name like `vault2.<your account>` instead (ADR-035).
+2. **Create a vault.** Open the **New vault** tab and keep **Any wallet** (the default; some NEAR wallets refuse the named way, see DECISIONS ADR-036). Keep `agent2.<your account>` as the agent, native USDC as the token, 3.2 NEAR for storage and the limits 1 / 3 / 5. Click **Review**. You see **Step 1 of 2: create** a 64-character address, and one wallet action: *Send 3.2 NEAR* to it. All of that NEAR stays in the vault for good. Tick the mainnet box, click **Sign in your wallet**, check that your wallet shows the same address, and approve. Then you see **Step 2 of 2** with the code hash `5HwAUrjKbx5qc7NNyka4ndkAsXUdA9CsQ1ya66zzNNve`. Click **Install and lock**; this tab signs it, so there is no wallet prompt. You see **Running and locked**, with a check for the matching code hash and **No access keys**. Keep the tab open until then. With a wallet that allows websites to install contract code, **With a name under your account** gives the vault a name like `vault2.<your account>` instead (ADR-035).
 3. **Add money.** Click **Next: add money and give your agent a key**. Under **Add money**, click **Add tokens**, enter `3`, and click **Review**. You see a `storage_deposit` (once) and an `ft_transfer` to the vault. Sign. You see **Confirmed on chain** and **3 USDC in the vault**.
-4. **Give your agent a key.** Under **Give your agent a key**, click **Set up an agent key**, keep `agent2`, and click **Make the key**. (Meteor signs this one.) Click **Download agent2.….json**. Then review and sign the transaction that creates `agent2.<your account>` with a key that can only call `request_direct_payment`, `request_cross_chain_payment` and `execute_request` on the vault. You see **agent2.… is ready** and the MCP settings for your agent. If your wallet refuses that transaction, pick **Any wallet** instead: the wallet only sends NEAR to a new 64-character account, this tab swaps in the restricted key, and then you sign `add_agent`. Put the file on the agent's machine, readable only by that user (`chmod 600`), and start the MCP server there with those settings ([apps/mcp/README.md](apps/mcp/README.md)).
-5. **Allow a cross-chain destination.** Open the **Cross-chain** tab. Pick **USDC on Base** (or Solana), paste the recipient's address, enter `1`, and click **Get a price**. You see what the vault sends, what arrives, the minimum, and the fee. Click **Allow this recipient in your rules**, review the one-line change, and sign.
-6. **Let the agent pay, and approve.** Ask your agent to pay that address 1 USDC. It calls `request_cross_chain_payment`, which files a real 1Click quote with the vault, and you get an approval link (and a Telegram alert, if set up). Open it. You see the deposit address and the final recipient apart, and **1Click confirms this deposit address**. If the deposit address is not registered with USDC yet, the page asks for that first (**Step 1 of 2**, a small `storage_deposit`); it is not the approval. Then **Approve and pay** (step 2). If 1Click's record does not match, Approve stays off. Approve in Meteor.
-7. **Follow it.** The same page then shows **1Click:** with its status, checked every 5 seconds, and links to the transactions on NEAR and on the destination chain once 1Click reports them.
+4. **Give your agent a key.** Under **Give your agent a key**, click **Set up an agent key**, keep `agent2`, and click **Make the key**. (Your wallet signs this one.) Click **Download agent2.….json**. Then review and sign the transaction that creates `agent2.<your account>` with a key that can only call `request_direct_payment`, `request_cross_chain_payment` and `execute_request` on the vault. You see **agent2.… is ready** and the MCP settings for your agent. If your wallet refuses that transaction, pick **Any wallet** instead: the wallet only sends NEAR to a new 64-character account, this tab swaps in the restricted key, and then you sign `add_agent`. Put the file on the agent's machine, readable only by that user (`chmod 600`), and start the MCP server there with those settings ([apps/mcp/README.md](apps/mcp/README.md)).
+5. **Allow a recipient.** A vault only pays recipients its owner has approved, and a new vault starts with none, so the agent's first payment on NEAR would be refused with `RECIPIENT_NOT_ALLOWED`. On https://spactvault.xyz open **Manage**, and under **Rules** click **Change the rules**. Put the account in **Who it may pay on NEAR** (for a test payment, your own `.near` account), click **Review**, and sign. **May pay on NEAR** then lists it, and the dashboard's "No recipients allowed yet" hint goes away. For a payment to another chain you do not need this step: in the next one, **Allow this recipient in your rules** adds the destination for you.
+6. **Allow a cross-chain destination.** Open the **Cross-chain** tab. Pick **USDC on Base** (or Solana), paste the recipient's address, enter `1`, and click **Get a price**. You see what the vault sends, what arrives, the minimum, and the fee. Click **Allow this recipient in your rules**, review the one-line change, and sign.
+7. **Let the agent pay, and approve.** Ask your agent to pay that address 1 USDC. It calls `request_cross_chain_payment`, which files a real 1Click quote with the vault, and you get an approval link (and a Telegram alert, if set up). Open it. You see the deposit address and the final recipient apart, and **1Click confirms this deposit address**. If the deposit address is not registered with USDC yet, the page asks for that first (**Step 1 of 2**, a small `storage_deposit`); it is not the approval. Then **Approve and pay** (step 2). If 1Click's record does not match, Approve stays off. Approve in your wallet.
+8. **Follow it.** The same page then shows **1Click:** with its status, checked every 5 seconds, and links to the transactions on NEAR and on the destination chain once 1Click reports them.
 
 Rules, pause, agents and withdrawals are under **Manage**: change the limits or recipients (the review lists each change in words), **Pause all payments**, add or remove agents, and **Take money out** (tokens only, to your account by default). Each is one wallet signature. The NEAR you send when creating a vault stays in it for good: the vault has no way to send NEAR out (DECISIONS ADR-036).
 
-This is the path the mainnet run took, with Meteor ("It ran on mainnet" above). Wallet limits and their browser-only workarounds are in DECISIONS ADR-033, ADR-035 and ADR-036, with a table of what each step asks the wallet to allow.
+This is the path the mainnet run took, with a NEAR wallet ("It ran on mainnet" above). Wallet limits and their browser-only workarounds are in DECISIONS ADR-033, ADR-035 and ADR-036, with a table of what each step asks the wallet to allow.
 
 ## Let Claude Code or Codex pay
 
@@ -113,7 +187,7 @@ This runs every suite, then builds `apps/web/public/security-report.json` from t
 | Site | https://spactvault.xyz (also https://0xileri.github.io/SpactVault/) |
 | Vault of the cross-chain run (P1 code, created from the website) | [`9dc744e29f8a079c6888dbdaafa8fb618b08c3734d00f4f25c8b31050ea086c9`](https://nearblocks.io/address/9dc744e29f8a079c6888dbdaafa8fb618b08c3734d00f4f25c8b31050ea086c9), no access keys |
 | First vault (P0 code, deployed with `scripts/deploy-mainnet.sh` on 2026-11-01) | [`vault.0xileri.near`](https://nearblocks.io/address/vault.0xileri.near), no access keys |
-| Owner (Meteor Wallet) | [`0xileri.near`](https://nearblocks.io/address/0xileri.near) |
+| Owner (NEAR wallet) | [`0xileri.near`](https://nearblocks.io/address/0xileri.near) |
 | Agents | [`agent2.0xileri.near`](https://nearblocks.io/address/agent2.0xileri.near) (three methods, for the P1 vault), [`agent.0xileri.near`](https://nearblocks.io/address/agent.0xileri.near) (two methods, for the P0 vault) |
 | Token | native USDC, [`17208628…36133a1`](https://nearblocks.io/address/17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1) |
 | Limits (both vaults) | paid at once up to 1 USDC, waits up to 3, 5 a day |
@@ -123,7 +197,7 @@ This runs every suite, then builds `apps/web/public/security-report.json` from t
 | Request | What happened | Transaction |
 |---|---|---|
 | 0.5 USDC | paid at once (under the 1 USDC instant limit) | [`3ABgwMWy…`](https://nearblocks.io/txns/3ABgwMWyKiS24AYtHSXgzVggekiNx5cb6xi3EucNqiJP) |
-| 2 USDC | waited; the owner approved and paid it with Meteor Wallet | request [`39dMJm5x…`](https://nearblocks.io/txns/39dMJm5xkDyqw5Mdjjm1JoNdLBkPrwwoJnQMPQaNN6HV), approval [`RqphTo2H…`](https://nearblocks.io/txns/RqphTo2Hy9ifsW7Y2PDXFM2A8gtcxu6GHdBuzfcP2oB) |
+| 2 USDC | waited; the owner approved and paid it with their NEAR wallet | request [`39dMJm5x…`](https://nearblocks.io/txns/39dMJm5xkDyqw5Mdjjm1JoNdLBkPrwwoJnQMPQaNN6HV), approval [`RqphTo2H…`](https://nearblocks.io/txns/RqphTo2Hy9ifsW7Y2PDXFM2A8gtcxu6GHdBuzfcP2oB) |
 | 4 USDC | blocked (over the 3 USDC limit per payment); nothing sent | refused request [`dpwtTTim…`](https://nearblocks.io/txns/dpwtTTimLp3Sq4RJcXpa3S45zcLdUwZ2bABHRKe22Q3) |
 
 The owner later took the P0 vault's remaining 2.5 USDC back with the site's Take money out ([`gxm1eTEN…`](https://nearblocks.io/txns/gxm1eTENWvyjJmZyte76WFe6txH6o22ZB7DawVDC4aK)). A testnet vault ([`vault.spact-ileri2.testnet`](https://testnet.nearblocks.io/address/vault.spact-ileri2.testnet), TUSD) ran the same flows from 2026-10-25 and still opens with `?network=testnet` (docs/STATUS.md).
@@ -185,35 +259,32 @@ To watch the attacks fail, run `pnpm e2e`. It drives Chromium against the same l
 
 The website is the owner's way to create a vault (above). Before it existed, the testnet and mainnet vaults were deployed with `scripts/deploy-testnet.sh` (2026-10-25) and `scripts/deploy-mainnet.sh` (2026-11-01, `vault.0xileri.near`). Both still work, are rehearsed against a local node (`scripts/rehearse-deploy-sandbox.sh`, `scripts/rehearse-mainnet-sandbox.sh`), and explain themselves in their headers. They need bash, rustup, Node 22.12+ and near-cli-rs, and the mainnet one waits for you to type `deploy to mainnet`. They give the agent the older two-method key, which cannot file cross-chain requests.
 
-## Run the tests
+## Built during NEAR HACKATHON
 
-Prerequisites: rustup (run `rustup toolchain install` inside `contracts/` to get the pinned 1.97.0 toolchain and wasm target), Node 22.12+, pnpm 10, and a C compiler (only used in containers with a low open-file limit).
+NEAR HACKATHON was announced on 2026-10-19. Under HACKATHON.md Q-001, code written from the announcement onward counts (the window runs from then to 2026-11-14), and earlier commits are baseline. **All code in this repository dates from after the announcement:** the first commit, `19d6119` (2026-10-23 22:01 UTC), adds the spec and the agent instructions, and the code follows that evening. There is no earlier baseline. Check it with `git log --reverse --format='%h %ad %s' --date=iso | head`. DECISIONS ADR-000 has the record.
 
-```bash
-# everything, then the Security Lab report
-scripts/security-report.sh
+As Q-003 asks, two tags mark the span, and this section links the diff: `pre-hackathon` on the first commit and `hackathon-submission` on main as submitted. Everything built between them: https://github.com/0xileri/SpactVault/compare/pre-hackathon...hackathon-submission (it works once both tags are pushed).
 
-# or piece by piece
-scripts/test-contracts.sh                      # vault unit, mock token, sandbox tests on a local NEAR node
-pnpm install --frozen-lockfile
-pnpm lint && pnpm typecheck && pnpm test && pnpm build
-pnpm e2e                                       # Chromium against a local chain
-pnpm mcp:sandbox && pnpm notifier:sandbox      # the MCP server and the notifier against a local chain
-```
+Merged pull requests, by merge date (UTC):
+- **Oct 23-24:** the vault contract with unit tests, sandbox tests on a real NEAR node and the TypeScript baseline (#1); the approval page, local demo, browser tests and testnet deploy script (#2); the agent's function-call key (#3); the MCP server (#4); the Telegram alert (#5); the owner dashboard (#6); the Security Lab (#7); GitHub Pages with the CI-built report (#8).
+- **Oct 25:** the testnet vault, deployed and recorded (#9); the landing page, brand and the agent's testnet run (#10); Railway hosting with security headers (#11).
+- **Oct 30:** the animated hero (#12); the SpactVault brand and spactvault.xyz (#13, #14).
+- **Nov 1:** the mainnet deploy script with a sandbox rehearsal (#15); the first mainnet vault, `vault.0xileri.near` (#16); plain-language front page, dashboard and approval page (#17, #18).
+- **Nov 2:** one site for testnet and mainnet (#19; its switch was removed in #25).
+- **Nov 3:** the cross-chain route: owner-approved payments through NEAR Intents 1Click, in the contract, the MCP server and the site (#20); the first mainnet payments from Claude Code: paid, held for approval, blocked (#21); every owner step on the website, with 1Click's quote signatures checked (#22); vault and agent setup that any NEAR wallet can sign (#23).
+- **Nov 4:** Take money out (#24); a simpler site with one action (#25); **the first cross-chain payment on mainnet, 1 USDC to Base, `SUCCESS`** (#26); the site pointed at that vault, every account and hash linked (#27); this README's mainnet record and the MIT license (#28); status cleanup (#29); the judges' README, provenance and the submission drafts (#30).
 
-Expected on 2026-11-04: vault unit `66 passed`, mock token `1`, sandbox `19`, shared `26`, intents `32`, web `79`, mcp `33`, notifier `28`, security-lab `9`, browser `49`, MCP over stdio `11`, notifier on a sandbox `4`. The first sandbox run downloads the NEAR sandbox node binary.
+The code and docs were written with an AI coding agent (Claude Code) working from AGENTS.md; the owner directed the work and did every wallet step.
 
-On testnet or mainnet the page uses a real wallet through NEAR Connect. Configure it with `apps/web/.env.example`.
+SpactVault is a new project, not an existing product or an older project with a new feature (Q-002, Q-004).
 
-## Built during the hackathon
-
-The build window is 2026-11-01 to 2026-11-14. **This project started earlier, on 2026-10-23**, when the owner told the coding agent to begin; the commit history shows it, and DECISIONS ADR-000 records it and the open question of whether that is allowed. Before Nov 1: the vault contract and its sandbox tests, the approval page, the MCP server, the Telegram notifier, the Security Lab, the testnet deployment, Railway hosting and the brand.
-
-From Nov 1 (merged pull requests):
-- **Nov 1:** mainnet deploy script with a sandbox rehearsal and on-chain tests for expired approvals and wrong-vault approvals (#15); the first mainnet vault, `vault.0xileri.near`, deployed and verified (#16); plain-language front page, dashboard and approval page (#17, #18).
-- **Nov 2:** one site for testnet and mainnet (#19, its switch later removed in #25).
-- **Nov 3:** the P1 cross-chain route: owner-approved payments through NEAR Intents 1Click, in the contract, the MCP server and the site (#20); the first mainnet payments from Claude Code: paid, held for approval, blocked (#21); every owner step on the website, with live 1Click answers recorded and 1Click's quote signatures checked (#22); vault and agent setup that any NEAR wallet can sign (#23).
-- **Nov 4:** Take money out for vault tokens (#24); a simpler site with one action (#25); **the first cross-chain payment on mainnet, 1 USDC to Base, `SUCCESS`** (#26); the site pointed at that vault, with every account and hash linked (#27).
+**Libraries, tools and AI code (Q-005).** No template or boilerplate, and no library of the owner's from before the hackathon. AI code: the code and docs were written with Claude Code (above). Open-source dependencies, at the versions the lockfiles pin:
+- **Contract (Rust):** `near-sdk` 5.29.1; tests: `near-workspaces` 0.23.0 (local NEAR sandbox node), `near-contract-standards` 5.29.1 (the mock token), `tokio`, `anyhow`, `serde_json`.
+- **Website:** React 19, Vite 8, Tailwind CSS 4, `@hot-labs/near-connect` 0.11.4 (wallet selector), `near-api-js` 7.2.0, Phosphor icons, the Space Grotesk and Geist Mono fonts (Fontsource); served by Caddy 2.11 on Railway.
+- **MCP server:** `@modelcontextprotocol/server` 2.3.1, `near-api-js` 7.2.0, `zod` 4.
+- **Shared and 1Click packages:** `zod` 4, `@noble/hashes` and `@noble/curves` (request hashes and 1Click's ed25519 quote signatures).
+- **Tooling:** TypeScript 6, ESLint 10, Vitest 5, Playwright 1.63, pnpm 10, Rust 1.97.
+- **Services:** NEAR mainnet and testnet RPC (FastNEAR's public endpoints), the NEAR Intents 1Click API (a JWT is optional under Q-006: the site sends none, and the MCP server takes one in `ONE_CLICK_JWT`), the Telegram Bot API.
 
 ## Repo map
 

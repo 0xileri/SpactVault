@@ -426,7 +426,7 @@ export function Landing({ config }: { config: SiteConfig }) {
                 </a>
               ) : null}
             </div>
-            {vaultConfig ? <p className="rise rise-3 mt-4 text-sm text-zinc-600">Works with any NEAR wallet, such as Meteor. About two minutes.</p> : null}
+            {vaultConfig ? <p className="rise rise-3 mt-4 text-sm text-zinc-600">Works with any NEAR wallet. About two minutes.</p> : null}
           </div>
           <div className="rise rise-2">
             <RequestFeed example={example} source={source} />

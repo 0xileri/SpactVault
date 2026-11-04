@@ -6,7 +6,8 @@
  * - Violet ink and the brand violet on white; neutral "zinc" grays only.
  * - Green, amber and rose appear only as the paid / waits / blocked signals, never as brand color.
  * - The front page is a stack of color bands (ADR-037): soft gradients, one hue per section, so each part
- *   reads as its own step. App pages stay plain paper.
+ *   reads as its own step. App pages (ADR-039) share one backdrop: the hero's violet light at the top,
+ *   fading into paper, under raised white cards.
  * - One motion curve for everything that moves, and nothing moves with prefers-reduced-motion.
  */
 @theme {
@@ -237,6 +238,14 @@ body::after {
   }
 }
 
+/* App pages (ADR-039): the hero's light at the top of every page, fading into paper by the first screen. */
+.app-backdrop {
+  background:
+    radial-gradient(56rem 24rem at 88% -6rem, rgb(106 76 255 / 0.18), transparent 70%),
+    radial-gradient(44rem 20rem at 0% -2rem, rgb(56 189 248 / 0.12), transparent 70%),
+    linear-gradient(180deg, #ece6ff 0rem, #f3f0ff 16rem, var(--color-paper) 34rem);
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -254,6 +263,11 @@ body::after {
   .lift:hover {
     transition: none;
     transform: none;
+  }
+
+  /* Tailwind hover lifts on buttons and cards (ADR-039), and the front page's main button */
+  [class*="hover:-translate-y"]:hover {
+    translate: none;
   }
 
   .reveal {

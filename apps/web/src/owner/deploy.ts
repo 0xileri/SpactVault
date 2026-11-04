@@ -6,7 +6,7 @@
  * Two ways, because wallets differ in what they let a website ask for:
  * - **named** (`name.<owner>`): the wallet creates the account, installs the code and adds an init key, a
  *   function-call key that can only call `new` on the vault. The tab calls `new` with it. The key stays, spent:
- *   `new` refuses forever once the vault runs. Meteor refuses to add a full-access key for a website, which is
+ *   `new` refuses forever once the vault runs. Some NEAR wallets refuse to add a full-access key for a website, which is
  *   why the earlier design (a full-access key the tab deleted) could not be signed there.
  * - **any wallet** (an implicit account, 64 hex characters): the wallet only sends NEAR, which every wallet can
  *   do. The tab's key is the account's full-access key; the tab installs the code, calls `new` and deletes the

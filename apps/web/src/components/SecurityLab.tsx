@@ -3,13 +3,14 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { CaseStatus, Layer } from "@spact/shared";
 
 import { loadSecurityReport, type LabCase, type LoadResult } from "../securityLab.js";
-import { Badge, Card, Mono, Notice } from "./ui.js";
+import { CheckCircle, Flask, Question, XCircle, type Icon } from "@phosphor-icons/react";
+import { Badge, Card, IconChip, Mono, Notice, PageHeader, type ChipTint } from "./ui.js";
 
-const STATUS: Record<CaseStatus, { tone: "good" | "info" | "neutral" | "bad"; label: string }> = {
-  PASSED_ON_CHAIN: { tone: "good", label: "Passed on a local chain" },
-  PASSED_UNIT_ONLY: { tone: "info", label: "Passed in unit tests" },
-  NOT_COVERED: { tone: "neutral", label: "Not covered" },
-  FAILED: { tone: "bad", label: "Failed" },
+const STATUS: Record<CaseStatus, { tone: "good" | "info" | "neutral" | "bad"; label: string; icon: Icon; tint: ChipTint; edge: string }> = {
+  PASSED_ON_CHAIN: { tone: "good", label: "Passed on a local chain", icon: CheckCircle, tint: "paid", edge: "bg-paid" },
+  PASSED_UNIT_ONLY: { tone: "info", label: "Passed in unit tests", icon: Flask, tint: "sky", edge: "bg-sky-400" },
+  NOT_COVERED: { tone: "neutral", label: "Not covered", icon: Question, tint: "waits", edge: "bg-zinc-300" },
+  FAILED: { tone: "bad", label: "Failed", icon: XCircle, tint: "blocked", edge: "bg-blocked" },
 };
 
 const LAYER: Record<Layer, string> = {
@@ -36,7 +37,8 @@ function CaseCard({ c }: { c: LabCase }) {
   const status = STATUS[c.derived];
   return (
     <li data-case={c.id} data-status={c.derived}>
-      <Card>
+      <Card className="relative overflow-hidden pl-7">
+        <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-1.5 ${status.edge}`} />
         <div className="flex flex-wrap items-start justify-between gap-2">
           <h3 className="min-w-0 text-sm font-semibold text-zinc-900">
             <span className="mr-2 font-mono text-zinc-500">{c.id}</span>
@@ -87,14 +89,16 @@ export function SecurityLab({ reportUrl }: { reportUrl: string }) {
   }, [reportUrl]);
 
   const intro = (
-    <div>
-      <h1 className="font-display text-2xl font-bold tracking-tight">Security Lab</h1>
-      <p className="mt-1 max-w-3xl text-sm leading-relaxed text-zinc-600">
-        Each row is an attack from the spec and the tests that try it. A row passes on a local chain only if every listed test ran and
-        passed, and at least one of them checks real chain state on a local NEAR node. These tests use a throwaway sandbox chain and test
-        tokens: no real funds move.
-      </p>
-    </div>
+    <PageHeader
+      eyebrow="Security Lab · how it was tested"
+      title="Security Lab"
+      lede={
+        <>
+          Each row is an attack from the spec and the tests that try it. A row passes on a local chain only if every listed test ran and passed, and at
+          least one of them checks real chain state on a local NEAR node. These tests use a throwaway sandbox chain and test tokens: no real funds move.
+        </>
+      }
+    />
   );
 
   if (!result) return <div className="space-y-4">{intro}<p className="text-sm text-zinc-500">Reading the report…</p></div>;
@@ -132,11 +136,14 @@ export function SecurityLab({ reportUrl }: { reportUrl: string }) {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="lab-summary">
         {(Object.keys(STATUS) as CaseStatus[]).map((s) => (
-          <Card key={s} className="p-4">
-            <p className="text-xs font-medium text-zinc-500">{STATUS[s].label}</p>
-            <p className="mt-1 font-display text-2xl font-semibold" data-testid={`count-${s}`}>
+          <Card key={s} className="p-5">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-xs font-medium text-zinc-500">{STATUS[s].label}</p>
+              <IconChip icon={STATUS[s].icon} tint={STATUS[s].tint} size="sm" />
+            </div>
+            <p className="mt-2 font-display text-4xl font-semibold tracking-tight text-ink" data-testid={`count-${s}`}>
               {counts[s]}
-              <span className="ml-1 text-xs font-normal text-zinc-500">of {cases.length}</span>
+              <span className="ml-1.5 text-sm font-normal tracking-normal text-zinc-500">of {cases.length}</span>
             </p>
           </Card>
         ))}

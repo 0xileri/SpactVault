@@ -1,3 +1,4 @@
+import { Robot, ShieldCheck, ShieldWarning, Signature } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
 
 import { explainReason, type CrossChainTerms, type PaymentRequest, type ReasonCode, type Status } from "@spact/shared";
@@ -12,7 +13,7 @@ import { useOneClick } from "../oneclick.js";
 import { SignError, type OwnerSigner } from "../signers/index.js";
 import type { SignerState } from "../useSigner.js";
 import { OneClickPanel } from "./OneClickPanel.js";
-import { Button, Card, Field, Mono, Notice, StatusBadge, statusLabel } from "./ui.js";
+import { Button, Card, Field, IconChip, Mono, Notice, StatusBadge, statusLabel } from "./ui.js";
 
 type Action = "approve" | "reject";
 type Phase =
@@ -110,12 +111,16 @@ export function ApprovalPage({
   return (
     <div className="space-y-6">
       {request ? (
-        <Card>
+        <Card className="relative overflow-hidden sm:p-8">
+          <span aria-hidden="true" className="absolute inset-x-0 top-0 h-1.5 bg-linear-to-r from-brand via-violet-400 to-sky-400" />
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h1 className="text-sm font-medium text-zinc-500">{open ? "Your agent wants to pay" : "Your agent asked to pay"}</h1>
+            <h1 className="flex items-center gap-3 text-sm font-medium text-zinc-500">
+              <IconChip icon={Robot} size="sm" />
+              {open ? "Your agent wants to pay" : "Your agent asked to pay"}
+            </h1>
             <StatusBadge status={request.status} />
           </div>
-          <p className="mt-3 font-display text-4xl font-semibold tracking-tight" data-testid="amount">
+          <p className="mt-5 font-display text-5xl font-semibold tracking-tight text-ink sm:text-6xl" data-testid="amount">
             {formatAmount(request.amount, token)}
           </p>
           {request.cross_chain ? (
@@ -142,7 +147,7 @@ export function ApprovalPage({
             </p>
           )}
 
-          <div className="mt-5 rounded-xl bg-paper p-4" data-testid="reason">
+          <div className="mt-6 rounded-2xl bg-violet-50/70 p-4 ring-1 ring-violet-100" data-testid="reason">
             <p className="text-xs font-medium text-zinc-500">What it is for, in your agent&apos;s words</p>
             {request.reason ? (
               <p className="mt-1 text-base text-ink">&ldquo;{request.reason}&rdquo;</p>
@@ -212,7 +217,7 @@ export function ApprovalPage({
       {request && open && a.computedHash ? (
         a.hashMatches ? (
           <div data-testid="hash-check" data-ok="true">
-            <Notice tone="good" title="Safety check passed">
+            <Notice tone="good" title="Safety check passed" icon={ShieldCheck}>
               <p>
                 What you see here is exactly what your agent asked for. Your approval only works for these exact terms, so if anything had been
                 changed, the vault would refuse it.
@@ -224,7 +229,7 @@ export function ApprovalPage({
           </div>
         ) : (
           <div data-testid="hash-check" data-ok="false">
-            <Notice tone="bad" title="Safety check failed: do not approve">
+            <Notice tone="bad" title="Safety check failed: do not approve" icon={ShieldWarning}>
               <p>What is shown here does not match what the vault saved. Someone may have changed it on its way to you.</p>
               <p className="mt-1 text-xs opacity-80">
                 Fingerprint here <Mono>{shortHash(a.computedHash)}</Mono>, saved in the vault <Mono>{shortHash(request.request_hash)}</Mono>.
@@ -240,8 +245,11 @@ export function ApprovalPage({
       ))}
 
       {request && open ? (
-        <Card>
-          <h2 className="text-lg font-semibold tracking-tight text-ink">Your decision</h2>
+        <Card className="ring-2 ring-brand/25 sm:p-8">
+          <h2 className="flex items-center gap-3 text-xl font-semibold tracking-tight text-ink">
+            <IconChip icon={Signature} size="sm" />
+            Your decision
+          </h2>
           {tokenPolicy ? (
             <p className="mt-1 text-sm text-zinc-600">
               Left to spend today:{" "}

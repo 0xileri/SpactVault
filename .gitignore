@@ -27,3 +27,6 @@ apps/web/playwright-report/
 # Security Lab: raw runner output and the report built from it (generated, never committed)
 reports/
 apps/web/public/security-report.json
+
+# hackathon submission payload: personal data, never committed (HACKATHON.md)
+docs/SUBMISSION.md

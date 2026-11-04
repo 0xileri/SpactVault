@@ -36,7 +36,7 @@ import {
 import { lockProblem } from "../../contracts.js";
 import type { OwnerSigner } from "../../signers/index.js";
 import type { SignerState } from "../../useSigner.js";
-import { Badge, Button, Card, Mono, Notice } from "../ui.js";
+import { Badge, Button, Card, Mono, Notice, PageHeader } from "../ui.js";
 import { MainnetConfirm, SignReview, splitList, TextField, TxLink } from "./SignReview.js";
 
 /** Native USDC on NEAR mainnet (docs/INTEGRATIONS.md, scripts/deploy-mainnet.sh). */
@@ -69,7 +69,7 @@ const DEFAULT_NEAR = "3.2";
 
 function defaults(owner: string | null): Form {
   return {
-    // Meteor refuses the named way (it blocks websites from installing contract code, ADR-035)
+    // some NEAR wallets refuse the named way (they block websites from installing contract code, ADR-035)
     mode: "any-wallet",
     name: "vault2",
     agents: owner ? `agent2.${owner}` : "",
@@ -280,13 +280,16 @@ export function NewVault({ config, signer, wallet }: { config: AppConfig; signer
   }
 
   const header = (
-    <div className="space-y-2">
-      <h1 className="text-2xl font-semibold tracking-tight text-ink">Create a vault</h1>
-      <p className="text-sm text-zinc-600">
-        Two steps, both from this page. First your wallet pays for the vault account. Then this tab starts the vault with a key only it holds, so the
-        vault ends up with no key that could change its code, not even yours. Your agent gets its own key later.
-      </p>
-    </div>
+    <PageHeader
+      eyebrow="New vault · about two minutes"
+      title="Create a vault"
+      lede={
+        <>
+          Two steps, both from this page. First your wallet pays for the vault account. Then this tab starts the vault with a key only it holds, so the
+          vault ends up with no key that could change its code, not even yours. Your agent gets its own key later.
+        </>
+      }
+    />
   );
 
   if (step.kind === "cancelled") {
@@ -481,7 +484,7 @@ export function NewVault({ config, signer, wallet }: { config: AppConfig; signer
           <label className="flex items-start gap-2 text-sm">
             <input type="radio" name="vault-mode" checked={form.mode === "any-wallet"} onChange={() => setForm((f) => ({ ...f, mode: "any-wallet" }))} className="mt-0.5" data-testid="mode-any-wallet" />
             <span>
-              <span className="font-medium">Any wallet</span>, at a 64-character address. Works with Meteor.
+              <span className="font-medium">Any wallet</span>, at a 64-character address. Works with any NEAR wallet.
               <span className="block text-xs text-zinc-500">Your wallet only sends NEAR, which every NEAR wallet can do. This tab does the rest, and the vault ends with no keys at all.</span>
             </span>
           </label>
@@ -490,7 +493,7 @@ export function NewVault({ config, signer, wallet }: { config: AppConfig; signer
             <span>
               <span className="font-medium">With a name under your account</span>, like <Mono>{`vault2.${owner ?? "you.near"}`}</Mono>.
               <span className="block text-xs text-zinc-500">
-                Your wallet creates the account, installs the code and adds a one-use setup key. Meteor refuses this: it blocks websites from installing contract
+                Your wallet creates the account, installs the code and adds a one-use setup key. Some NEAR wallets refuse this: they block websites from installing contract
                 code. Only for a wallet that allows it; if yours refuses, nothing is sent.
               </span>
             </span>
