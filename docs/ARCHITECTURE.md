@@ -170,4 +170,4 @@ CI uploads every job's raw output as `report-*` artifacts. The `security-report`
 | Component | Role | Authority |
 |---|---|---|
 | API (Hono on Workers) | relay agent requests, index events, send notifications | none: on-chain state wins |
-| 1Click live use (P1) | the MCP tool, the cross-chain page and the approval page's check and tracking are built and tested against a mock 1Click and against live answers recorded on 2026-11-03; no live payment yet | trusted off-chain quote, signed by 1Click, disclosed |
+| 1Click live use (P1) | the MCP tool, the cross-chain page and the approval page's check and tracking are built and tested against a mock 1Click and against live answers recorded on 2026-11-03 and 2026-11-04; one live payment on mainnet (1 USDC to Base, `SUCCESS`, 2026-11-04) | trusted off-chain quote, signed by 1Click, disclosed |

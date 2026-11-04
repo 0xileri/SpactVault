@@ -417,6 +417,6 @@ After the mainnet cross-chain run (STATUS "Mainnet cross-chain run"), the owner 
 - [x] Hosting: GitHub Pages from main, with the CI-built report (ADR-023), and Railway with real security headers (ADR-025). Open: a Content-Security-Policy.
 - [ ] A trusted RPC endpoint for testnet/mainnet. The site uses `https://test.rpc.fastnear.com` on testnet for now.
 - [ ] Reproducible vault build, so anyone can match the deployed code hash to the source (STATUS: "Build reproducibility").
-- [ ] License (MIT or Apache-2.0).
+- [x] License: MIT (`LICENSE`, chosen by the owner, 2026-11-04).
 - [x] Custom domain: `spactvault.xyz`, on Railway (ADR-027).
 - [ ] NEAR payout account and project description for the form (owner-provided).
