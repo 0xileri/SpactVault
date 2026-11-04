@@ -2,11 +2,13 @@
 
 Short ADRs. Each records the date, the choice, and why.
 
-## ADR-000: Implementation started before the build window (2026-10-23)
+## ADR-000: Implementation started on 2026-10-23, after the announcement (2026-10-23, settled 2026-11-04)
 
-The owner told the coding agent to start building on 2026-10-23, before the official window (2026-11-01 to 2026-11-14). The commit history shows this. AGENTS.md says not to present pre-event code as built during the event, and to verify eligibility before submitting.
+The owner told the coding agent to start building on 2026-10-23. NEAR HACKATHON was announced on 2026-10-19, and the live `HACKATHON.md` (synced into this repository on 2026-11-04) settles it in Q-001: code written from the announcement onward is allowed, and anything older is baseline. The first commit, `19d6119`, is from 2026-10-23 22:01 UTC, so every commit is in scope and there is no baseline. This is allowed, not a risk.
 
-`HACKATHON.md` (owner copy of 2026-10-23) gives the start as 2026-11-01 but has no explicit rule about code written earlier. The announcement says to build during the hackathon. **Open:** ask the organizers (NEAR Discord) whether pre-start code is allowed, and disclose the start date in the submission regardless.
+Provenance (Q-003): the README section "Built during NEAR HACKATHON" says so and lists the merged pull requests by date. The tag `pre-hackathon` marks the first commit and `hackathon-submission` main as submitted, so the compare view between them shows everything built. The owner creates and pushes both tags.
+
+Before 2026-11-04 this ADR read the owner's copy of 2026-10-23, which gave the start as 2026-11-01 with no rule on earlier code, and left eligibility as an open question for the organizers.
 
 ## ADR-001: P0 supports direct NEP-141 payments on NEAR only (2026-10-23)
 
@@ -402,8 +404,8 @@ After the mainnet cross-chain run (STATUS "Mainnet cross-chain run"), the owner 
 
 ## Open questions (from AGENTS.md section 17)
 
-- [x] Official `HACKATHON.md`: added at the repo root (owner copy, 2026-10-23).
-- [ ] Eligibility of pre-window code (ADR-000).
+- [x] Official `HACKATHON.md`: at the repo root; owner copy of 2026-10-23, synced with the live version on 2026-11-04.
+- [x] Eligibility of code written from 2026-10-23: allowed under HACKATHON.md Q-001, which counts code from the 2026-10-19 announcement (ADR-000).
 - [x] Demo stablecoin: native USDC on mainnet, checked on chain by the deploy script (ADR-028). Open: 1Click support (P1).
 - [x] Mainnet protocol version >= 84: `scripts/deploy-mainnet.sh` reads it from the RPC and stops below 84 (ADR-028). Testnet: protocol 88 (2026-10-25).
 - [x] Vault account key policy: on mainnet the key is deleted after the deploy, so the code is locked (ADR-028).
