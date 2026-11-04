@@ -84,7 +84,7 @@ export function vaultStorageNeeded(wasmBytes: number): bigint {
  * Transaction 1 of creating a named vault, signed by the owner's wallet (ADR-035): create `vaultId` as its
  * sub-account, fund it, install the published code, and add an init key that this tab made: a function-call
  * key that can only call `new` on the vault, with gas for one call. No full-access key is ever added, which
- * Meteor and other wallets refuse to do for a website. Transaction 2 (owner/deploy.ts) uses the init key once.
+ * some NEAR wallets refuse to do for a website. Transaction 2 (owner/deploy.ts) uses the init key once.
  */
 export function createVaultAccountActions(vaultId: string, fundYocto: bigint, wasm: Uint8Array, initPublicKey: string): WalletAction[] {
   return [

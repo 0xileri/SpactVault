@@ -101,7 +101,7 @@ Seen on testnet (2026-10-25, the owner's run from WSL Ubuntu; testnet is unreach
 - **near-cli-rs 0.30.1 asks for a key type.** `autogenerate-new-keypair` takes `--signature-scheme ed25519|ml-dsa-65` (ML-DSA-65 is the post-quantum key type that protocol 2.13 adds). Without the flag it asks in a terminal and picks ed25519 when there is none (near-cli-rs `src/common.rs` at tag v0.30.1), which is why the sandbox rehearsal never saw the question. The deploy script passes `--signature-scheme ed25519`, because the MCP server's key file must be ed25519.
 - **The faucet funded new accounts.** `sponsor-by-faucet-service` (faucet `https://helper.nearprotocol.com/account` in near-cli-rs's config) worked.
 - **Reading state with near-cli-rs.** `near contract call-function as-read-only <id> <method> json-args '{}' network-config testnet now`, `near account view-account-summary <id> network-config testnet now` and `near account list-keys <id> network-config testnet now` worked.
-- **Meteor Wallet signed an approval through near-connect** on https://0xileri.github.io/Spact/.
+- **A NEAR wallet signed an approval through near-connect** on https://0xileri.github.io/Spact/.
 
 ## Mainnet (checked 2026-10-30)
 

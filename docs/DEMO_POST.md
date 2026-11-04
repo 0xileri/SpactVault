@@ -6,7 +6,7 @@ Before posting, check:
 - the demo video is attached (HACKATHON.md accepts a video or screenshots; Q-012 says screenshots are not enough when judges cannot open the demo, so a video is the safe choice);
 - the text says it was built at NEAR HACKATHON and tags @NEARProtocol and #NEARHackathon (HACKATHON.md requires both);
 - the optional tags: HACKATHON.md names @NearLegion and @NearBuilders. These drafts use @NearBuilders and @NEAR_hckthn as the owner asked; @NEAR_hckthn is not in HACKATHON.md, so check that the account exists, or swap it for @NearLegion (same length);
-- the video shows one complete moment, from a real user action to a visible result (HACKATHON.md "A good demo post"): for example the agent asking from Claude Code, the owner approving in Meteor, and the USDC arriving on Base;
+- the video shows one complete moment, from a real user action to a visible result (HACKATHON.md "A good demo post"): for example the agent asking from Claude Code, the owner approving in their NEAR wallet, and the USDC arriving on Base;
 - both links open: https://spactvault.xyz and https://github.com/0xileri/SpactVault.
 
 ## Short version (276 of 280)
@@ -39,7 +39,7 @@ what NEAR does here:
 - small payments go through at once. bigger ones wait until the owner approves that exact payment in their wallet. anything over the cap is refused on chain.
 - payments to other chains go through NEAR Intents 1Click, and they always wait for the owner.
 
-first real run, nov 4 on mainnet: claude code asked for 1 USDC to our address on Base. the vault held it, we approved in meteor wallet, and 0.997398 USDC landed on Base 38 seconds later. every transaction is linked from the repo.
+first real run, nov 4 on mainnet: claude code asked for 1 USDC to our address on Base. the vault held it, we approved it in a NEAR wallet, and 0.997398 USDC landed on Base 38 seconds later. every transaction is linked from the repo.
 
 the attacks we could think of (a lying backend, a prompt-injected agent, replays, parallel requests) run as tests against a real NEAR node, and the results are on the site.
 

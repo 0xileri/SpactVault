@@ -79,7 +79,7 @@ test("create a named vault: the wallet creates it with the published code and a 
   const traffic = recordTraffic(page);
   await page.goto("/?page=new-vault");
   await connect(page);
-  // Any wallet is the default (Meteor refuses the named way); this test takes the named way
+  // Any wallet is the default (some NEAR wallets refuse the named way); this test takes the named way
   await page.getByTestId("mode-named").check();
   await page.getByTestId("vault-name").fill("vault2");
   await page.getByTestId("vault-agents").fill(AGENT2);
@@ -87,7 +87,7 @@ test("create a named vault: the wallet creates it with the published code and a 
   await expect(page.getByTestId("vault-token")).toHaveValue(f.token_id);
   await page.getByTestId("review-vault").click();
 
-  // step 1: what the wallet signs. No full-access key: Meteor refuses to add one for a website.
+  // step 1: what the wallet signs. No full-access key: some NEAR wallets refuse to add one for a website.
   const actions = page.getByTestId("review-actions");
   await expect(actions).toContainText(`Create the account ${VAULT2}`);
   await expect(actions).toContainText(`Send 3.2 NEAR to ${VAULT2}`);
