@@ -4,6 +4,7 @@ import { explainReason, type CrossChainTerms, type PaymentRequest, type ReasonCo
 
 import { assess, buildApproveActions, buildRejectActions, reasonFromError } from "../approval.js";
 import { explorerTxLink, type AppConfig } from "../config.js";
+import { AccountLink } from "./AccountLink.js";
 import { outcomeLine } from "../dashboard.js";
 import { errorMessage, formatAmount, formatRelative, formatUtc, shortHash } from "../format.js";
 import { loadSnapshot, waitForRequest, type VaultSnapshot } from "../near/vault.js";
@@ -136,7 +137,7 @@ export function ApprovalPage({
             <p className="mt-2 text-base text-zinc-600">
               to{" "}
               <span className="text-lg font-semibold text-ink" data-testid="recipient">
-                <Mono>{request.recipient}</Mono>
+                <AccountLink config={config} account={request.recipient} />
               </span>
             </p>
           )}
@@ -178,10 +179,10 @@ export function ApprovalPage({
                 <Mono>{request.amount}</Mono>
               </Field>
               <Field label="Token contract">
-                <Mono>{request.token}</Mono>
+                <AccountLink config={config} account={request.token} />
               </Field>
               <Field label="Requested by">
-                <Mono>{request.agent_id}</Mono>
+                <AccountLink config={config} account={request.agent_id} />
               </Field>
               <Field label="Request ID">
                 <Mono>{request.request_id}</Mono>

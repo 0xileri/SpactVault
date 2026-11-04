@@ -227,10 +227,6 @@ export function parseSiteConfigs(env: Record<string, string | undefined>): SiteC
 }
 
 /** The networks a build serves, main network first, each once. */
-export function networksOf(configs: SiteConfig[]): NetworkId[] {
-  return [...new Set(configs.map((c) => c.network))];
-}
-
 export function explorerAccountLink(config: Pick<AppConfig, "explorerAccountUrl">, account: string): string | null {
   if (!config.explorerAccountUrl || !accountId.safeParse(account).success) return null;
   return config.explorerAccountUrl.replace("{account}", encodeURIComponent(account));

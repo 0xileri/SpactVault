@@ -24,7 +24,7 @@ A wallet key can spend everything. A NEAR function-call key restricts which meth
 | Vault contract (`contracts/spact-vault`) | built, 66 unit tests (15 for the P1 cross-chain route) |
 | Real-chain tests on a NEAR sandbox node (`contracts/integration-tests`) | 19 passing: auto payment, approval flow, parallel split, failed transfer, private callback, agent bypass attempts, init front-run, pause/recovery, the agent's restricted key, expiry, wrong vault or policy, and the cross-chain route (deposit and payee bound apart, returned tokens never restore budget, expired quote, unlisted route) |
 | Shared TS package: request hash, exact amounts, contract JSON schemas, reason codes, RPC client (`packages/shared`) | built, 26 tests; hash matches Rust and independent Python vectors, direct and cross-chain |
-| Landing page, owner dashboard and approval page (`apps/web`) | built, with tampered RPC answers, framing, the network switch and the cross-chain review page tested in a browser on a local chain |
+| Front page, owner dashboard and approval page (`apps/web`) | built, with one action on the front page (Create your vault, ADR-037), tampered RPC answers, framing and the cross-chain review page tested in a browser on a local chain |
 | Owner tools on the website: create a vault, fund it, rules, pause, agents, agent key, cross-chain page (`apps/web`, ADR-033) | built and tested in a browser on a local chain, every flow end to end; **not yet run with Meteor on mainnet** |
 | Hosted site | live at https://spactvault.xyz (Railway) and https://0xileri.github.io/SpactVault/ (GitHub Pages), both from main, reading the mainnet vault with a switch to the testnet vault |
 | Security Lab report and page (`packages/security-lab`, `?page=security`) | built: 17 of 18 attack cases pass on a local chain, T10 in unit tests only, none uncovered (329 tests in 11 suites, 2026-11-03) |
@@ -45,7 +45,7 @@ Details: [docs/STATUS.md](docs/STATUS.md). Security mapping: [docs/THREAT_MODEL.
 
 Everything the owner does happens on https://spactvault.xyz with a browser wallet such as Meteor. No terminal. The site shows what each step does before your wallet asks you to sign, and on mainnet the Sign button stays off until you tick that you checked it (DECISIONS ADR-033). The only part that is not in the browser is your agent, which runs the MCP server on its own machine. Mainnet uses real funds: keep amounts small.
 
-1. **Connect.** Open https://spactvault.xyz, pick **Mainnet** in the top bar, open **Dashboard**, and click **Connect NEAR wallet**. You see your account (for example `0xileri.near`) in the page header.
+1. **Connect.** Open https://spactvault.xyz (it runs on mainnet), click **Create your vault**, and click **Connect NEAR wallet**. You see your account (for example `0xileri.near`) in the page header.
 2. **Create a vault.** Open the **New vault** tab and keep **Any wallet** (the default; Meteor refuses the named way, see DECISIONS ADR-036). Keep `agent2.<your account>` as the agent, native USDC as the token, 3.2 NEAR for storage and the limits 1 / 3 / 5. Click **Review**. You see **Step 1 of 2: create** a 64-character address, and one wallet action: *Send 3.2 NEAR* to it. All of that NEAR stays in the vault for good. Tick the mainnet box, click **Sign in your wallet**, check that Meteor shows the same address, and approve. Then you see **Step 2 of 2** with the code hash `5HwAUrjKbx5qc7NNyka4ndkAsXUdA9CsQ1ya66zzNNve`. Click **Install and lock**; this tab signs it, so there is no wallet prompt. You see **Running and locked**, with a check for the matching code hash and **No access keys**. Keep the tab open until then. With a wallet that allows websites to install contract code, **With a name under your account** gives the vault a name like `vault2.<your account>` instead (ADR-035).
 3. **Add money.** Click **Next: add money and give your agent a key**. Under **Add money**, click **Add tokens**, enter `3`, and click **Review**. You see a `storage_deposit` (once) and an `ft_transfer` to the vault. Sign. You see **Confirmed on chain** and **3 USDC in the vault**.
 4. **Give your agent a key.** Under **Give your agent a key**, click **Set up an agent key**, keep `agent2`, and click **Make the key**. Click **Download agent2.….json**. Then review and sign the transaction that creates `agent2.<your account>` with a key that can only call `request_direct_payment`, `request_cross_chain_payment` and `execute_request` on the vault. You see **agent2.… is ready** and the MCP settings for your agent. If your wallet refuses that transaction, pick **Any wallet** instead: the wallet only sends NEAR to a new 64-character account, this tab swaps in the restricted key, and then you sign `add_agent`. Put the file on the agent's machine, readable only by that user (`chmod 600`), and start the MCP server there with those settings ([apps/mcp/README.md](apps/mcp/README.md)).
@@ -67,7 +67,7 @@ This runs every suite, then builds `apps/web/public/security-report.json` from t
 
 ## Live on mainnet and testnet
 
-**Unaudited prototype.** The mainnet vault holds 5 real USDC with small fixed limits. Testnet uses TUSD, a test token with no value. The switch in the site's top bar moves between them.
+**Unaudited prototype.** The mainnet vault holds 5 real USDC with small fixed limits. Testnet uses TUSD, a test token with no value. The site shows mainnet; a link with `?network=testnet` opens the testnet vault.
 
 | | Mainnet | Testnet |
 |---|---|---|
@@ -94,12 +94,12 @@ After every job passes on main, CI publishes the site to GitHub Pages at https:/
 
 Repository settings this needs: Settings → Pages → Source **GitHub Actions** (once), and repository variables under Settings → Secrets and variables → Actions → Variables:
 - `VITE_NEAR_NETWORK`, `VITE_NEAR_RPC_URL` and `VITE_VAULT_ID` for the main network, now `mainnet`, `https://rpc.mainnet.fastnear.com` and `vault.0xileri.near`. Without them the build defaults to testnet and `https://test.rpc.fastnear.com`.
-- Optional, for the network switch: `VITE_TESTNET_VAULT_ID`, now `vault.spact-ileri2.testnet` (with `VITE_TESTNET_RPC_URL`, default `https://test.rpc.fastnear.com`). On a testnet-first site, use `VITE_MAINNET_VAULT_ID` and `VITE_MAINNET_RPC_URL` instead.
+- Optional, for links to a second network (`?network=testnet`; there is no switch on the page, ADR-037): `VITE_TESTNET_VAULT_ID`, now `vault.spact-ileri2.testnet` (with `VITE_TESTNET_RPC_URL`, default `https://test.rpc.fastnear.com`). On a testnet-first site, use `VITE_MAINNET_VAULT_ID` and `VITE_MAINNET_RPC_URL` instead.
 - Optional, for more than one vault on a network: `VITE_EXTRA_VAULTS` (comma-separated, each `account` or `account=label`), plus `VITE_VAULT_LABEL` for the default vault, e.g. `VITE_VAULT_ID=vault2.0xileri.near`, `VITE_VAULT_LABEL=P1 vault`, `VITE_EXTRA_VAULTS=vault.0xileri.near=P0 vault`. A picker in the page header then moves between them (ADR-033). A vault the site does not list still opens if it runs a SpactVault build the site knows and has no access keys.
 
 After changing them, re-run the workflow on main. These are public values, not secrets.
 
-The switch keeps you on the same page and adds `?network=testnet` to every link while you are on the second network. Approval links from the MCP server and the Telegram alert name their vault (`?request=<id>&vault=<vault>`), so they open on the right network on their own (DECISIONS ADR-031).
+On a `?network=testnet` link, every link on the page keeps `?network=testnet`. Approval links from the MCP server and the Telegram alert name their vault (`?request=<id>&vault=<vault>`), so they open on the right network on their own (DECISIONS ADR-031).
 
 ## Deploy to Railway
 

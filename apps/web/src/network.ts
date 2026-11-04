@@ -4,8 +4,6 @@ import type { NetworkId, SiteConfig } from "./config.js";
 
 export const NETWORK_LABEL: Record<NetworkId, string> = { sandbox: "Sandbox", testnet: "Testnet", mainnet: "Mainnet" };
 
-const PAGES = new Set(["overview", "security", "legal", "manage", "new-vault", "crosschain"]);
-
 /**
  * Which of the build's vaults this page load shows. `network=` in the URL picks a network by name, and
  * `vault=` picks one of that network's listed vaults. Without `network=`, a `vault=` naming any listed vault
@@ -51,19 +49,6 @@ export function placeOf(configs: SiteConfig[], network: NetworkId, vaultId: stri
   const mainNetwork = configs[0]?.network ?? network;
   const networkDefault = configs.find((c) => c.network === network)?.vaultId ?? null;
   return { network: network === mainNetwork ? null : network, vault: vaultId === null || vaultId === networkDefault ? null : vaultId };
-}
-
-/**
- * Where the network switch goes: the same page on the other network. A request or vault in the URL
- * belongs to the network being left, so they are dropped.
- */
-export function switchHref(search: string, target: NetworkId, mainNetwork: NetworkId): string {
-  const page = new URLSearchParams(search).get("page");
-  const params = new URLSearchParams();
-  if (page !== null && PAGES.has(page)) params.set("page", page);
-  if (target !== mainNetwork) params.set("network", target);
-  const query = params.toString();
-  return query ? `./?${query}` : "./";
 }
 
 /** Rewrites internal links so they stay on the network and vault this page shows. */
