@@ -1,19 +1,24 @@
-import type { PaymentRequest } from "@spact/shared";
+import { createHash } from "node:crypto";
+
+import { CHAIN_RE, EXTERNAL_ID_RE, type PaymentRequest } from "@spact/shared";
 import { describe, expect, it } from "vitest";
 
 import {
   buildQuoteRequest,
+  chainName,
   crossChainArgs,
   depositMismatches,
+  findRoute,
   oneClickOverHttp,
   OneClickHttpError,
   quoteHash,
   quoteResponseSchema,
   reconcile,
   statusResponseSchema,
+  tokenListSchema,
   verifyQuoteSignature,
 } from "../src/index.js";
-import { errors } from "./fixtures/live/index.js";
+import { errors, tokens } from "./fixtures/live/index.js";
 import * as dry from "./fixtures/live/quote-dry.js";
 import * as live from "./fixtures/live/quote.js";
 import { LIVE, liveRequest } from "./fixtures/live/request.js";
@@ -164,5 +169,37 @@ describe("mock signatures", () => {
     expect(verifyQuoteSignature(signed)).toBe(false);
     const { MOCK_SIGNER_PUBLIC_KEY, MOCK_SIGNER_SEED } = await import("../src/index.js");
     expect(mockQuoteSigner(MOCK_SIGNER_SEED).publicKey).toBe(MOCK_SIGNER_PUBLIC_KEY);
+  });
+});
+
+describe("live 1Click token list (recorded 2026-11-04)", () => {
+  it("is the recorded file byte for byte", () => {
+    expect(tokens.raw.length).toBe(tokens.BYTES);
+    expect(createHash("sha256").update(tokens.raw).digest("hex")).toBe(tokens.SHA256);
+  });
+
+  it("parses in full: no entry of the real list is dropped", () => {
+    const list = tokenListSchema.parse(tokens.body);
+    expect(Array.isArray(tokens.body) && tokens.body.length).toBe(215);
+    expect(list).toHaveLength(215);
+    expect(new Set(list.map((t) => t.blockchain)).size).toBe(38);
+  });
+
+  it("finds the routes the vault uses: native USDC on NEAR to USDC on Base and on Solana", () => {
+    const base = findRoute(tokens.body, LIVE.usdc, tokens.BASE_USDC);
+    expect(base?.origin).toMatchObject({ assetId: tokens.NEAR_USDC, blockchain: "near", symbol: "USDC", decimals: 6 });
+    expect(base?.destination).toMatchObject({ blockchain: "base", symbol: "USDC", decimals: 6, contractAddress: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" });
+    expect(chainName("base")).toBe("Base");
+    // the Solana asset id the earlier fixtures took from a jq query is in the full list too
+    expect(findRoute(tokens.body, LIVE.usdc, LIVE.solUsdc)?.destination).toMatchObject({ blockchain: "sol", symbol: "USDC" });
+    expect(findRoute(tokens.body, LIVE.usdc, "nep141:not-listed.omft.near")).toBeNull();
+    expect(findRoute(tokens.body, "usdc.fakes.near", tokens.BASE_USDC)).toBeNull();
+  });
+
+  it("names every chain and asset in a form the vault's rules accept, so any listed destination can be allowed", () => {
+    for (const t of tokenListSchema.parse(tokens.body)) {
+      expect(CHAIN_RE.test(t.blockchain), t.blockchain).toBe(true);
+      expect(EXTERNAL_ID_RE.test(t.assetId) && t.assetId.length <= 128, t.assetId).toBe(true);
+    }
   });
 });
