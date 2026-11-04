@@ -1,19 +1,25 @@
-import type { PaymentRequest } from "@spact/shared";
+import { createHash } from "node:crypto";
+
+import { CHAIN_RE, EXTERNAL_ID_RE, type PaymentRequest } from "@spact/shared";
 import { describe, expect, it } from "vitest";
 
 import {
   buildQuoteRequest,
+  chainName,
   crossChainArgs,
   depositMismatches,
+  findRoute,
   oneClickOverHttp,
   OneClickHttpError,
   quoteHash,
   quoteResponseSchema,
   reconcile,
   statusResponseSchema,
+  tokenListSchema,
+  txExplorerLink,
   verifyQuoteSignature,
 } from "../src/index.js";
-import { errors } from "./fixtures/live/index.js";
+import { errors, quoteDryBase, statusSuccess, tokens } from "./fixtures/live/index.js";
 import * as dry from "./fixtures/live/quote-dry.js";
 import * as live from "./fixtures/live/quote.js";
 import { LIVE, liveRequest } from "./fixtures/live/request.js";
@@ -164,5 +170,119 @@ describe("mock signatures", () => {
     expect(verifyQuoteSignature(signed)).toBe(false);
     const { MOCK_SIGNER_PUBLIC_KEY, MOCK_SIGNER_SEED } = await import("../src/index.js");
     expect(mockQuoteSigner(MOCK_SIGNER_SEED).publicKey).toBe(MOCK_SIGNER_PUBLIC_KEY);
+  });
+});
+
+describe("live 1Click token list (recorded 2026-11-04)", () => {
+  it("is the recorded file byte for byte", () => {
+    expect(tokens.raw.length).toBe(tokens.BYTES);
+    expect(createHash("sha256").update(tokens.raw).digest("hex")).toBe(tokens.SHA256);
+  });
+
+  it("parses in full: no entry of the real list is dropped", () => {
+    const list = tokenListSchema.parse(tokens.body);
+    expect(Array.isArray(tokens.body) && tokens.body.length).toBe(215);
+    expect(list).toHaveLength(215);
+    expect(new Set(list.map((t) => t.blockchain)).size).toBe(38);
+  });
+
+  it("finds the routes the vault uses: native USDC on NEAR to USDC on Base and on Solana", () => {
+    const base = findRoute(tokens.body, LIVE.usdc, tokens.BASE_USDC);
+    expect(base?.origin).toMatchObject({ assetId: tokens.NEAR_USDC, blockchain: "near", symbol: "USDC", decimals: 6 });
+    expect(base?.destination).toMatchObject({ blockchain: "base", symbol: "USDC", decimals: 6, contractAddress: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" });
+    expect(chainName("base")).toBe("Base");
+    // the Solana asset id the earlier fixtures took from a jq query is in the full list too
+    expect(findRoute(tokens.body, LIVE.usdc, LIVE.solUsdc)?.destination).toMatchObject({ blockchain: "sol", symbol: "USDC" });
+    expect(findRoute(tokens.body, LIVE.usdc, "nep141:not-listed.omft.near")).toBeNull();
+    expect(findRoute(tokens.body, "usdc.fakes.near", tokens.BASE_USDC)).toBeNull();
+  });
+
+  it("names every chain and asset in a form the vault's rules accept, so any listed destination can be allowed", () => {
+    for (const t of tokenListSchema.parse(tokens.body)) {
+      expect(CHAIN_RE.test(t.blockchain), t.blockchain).toBe(true);
+      expect(EXTERNAL_ID_RE.test(t.assetId) && t.assetId.length <= 128, t.assetId).toBe(true);
+    }
+  });
+});
+
+describe("live dry quote to Base for the mainnet run (recorded 2026-11-04)", () => {
+  it("is signed by 1Click, answers exactly what was asked, and refunds to the vault", () => {
+    expect(quoteDryBase.status).toBe(201);
+    expect(verifyQuoteSignature(quoteDryBase.body)).toBe(true);
+    // a different payee breaks the signature
+    const other = { ...quoteDryBase.body, quoteRequest: { ...quoteDryBase.body.quoteRequest, recipient: "0x0000000000000000000000000000000000000001" } };
+    expect(verifyQuoteSignature(other)).toBe(false);
+
+    const parsed = quoteResponseSchema.parse(quoteDryBase.body);
+    // what our own builder sends for these values is exactly the recorded request
+    const built = buildQuoteRequest({
+      vaultId: quoteDryBase.VAULT,
+      token: LIVE.usdc,
+      amount: 1_000_000n,
+      destinationAsset: tokens.BASE_USDC,
+      recipient: quoteDryBase.BASE_RECIPIENT,
+      slippageBps: 100,
+      deadline: new Date(quoteDryBase.request.deadline),
+      dry: true,
+    });
+    expect(built).toEqual(quoteDryBase.request);
+    expect(parsed.quoteRequest).toMatchObject(built);
+    expect(parsed.quoteRequest.refundTo).toBe(quoteDryBase.VAULT);
+    expect(parsed.quote).toMatchObject({ amountIn: "1000000", amountOut: "997398", minAmountOut: "987424", refundFee: "5128", withdrawFee: "2400" });
+    expect(parsed.quote.depositAddress).toBeUndefined();
+    // the destination is one 1Click lists, on Base
+    expect(findRoute(tokens.body, LIVE.usdc, built.destinationAsset)?.destination.blockchain).toBe("base");
+  });
+});
+
+describe("the first real deposit: 1Click's SUCCESS record for the mainnet run (recorded 2026-11-04)", () => {
+  const S = statusSuccess.STORED;
+  const deadlineNs = ns(S.quote_deadline);
+  const run: PaymentRequest = {
+    request_id: S.request_id,
+    agent_id: S.agent_id,
+    route: "ONE_CLICK_ORIGIN_NEAR",
+    token: LIVE.usdc,
+    amount: "1000000",
+    recipient: statusSuccess.DEPOSIT,
+    reason: "SpactVault mainnet cross-chain test: 1 USDC to Base",
+    created_at_ns: ns("2026-11-04T12:38:05.000Z"),
+    expires_at_ns: (BigInt(deadlineNs) - 60_000_000_000n).toString(),
+    policy_version: 2,
+    cross_chain: {
+      destination_chain: "base",
+      destination_asset: tokens.BASE_USDC,
+      destination_recipient: quoteDryBase.BASE_RECIPIENT,
+      refund_to: S.vault,
+      min_amount_out: S.min_amount_out,
+      quote_hash: S.quote_hash,
+      quote_expires_at_ns: deadlineNs,
+    },
+    request_hash: "0".repeat(64),
+    status: "CROSS_CHAIN_PENDING",
+    reason_code: "EXTERNAL_SETTLEMENT_PENDING",
+    approved_by: "0xileri.near",
+    reserved_day: null,
+    updated_at_ns: ns("2026-11-04T12:46:33.938Z"),
+  };
+
+  it("parses, carries 1Click's signed quote, and matches what the vault stored", () => {
+    expect(statusSuccess.status).toBe(200);
+    const parsed = statusResponseSchema.parse(statusSuccess.body);
+    expect(parsed.status).toBe("SUCCESS");
+    expect(verifyQuoteSignature(statusSuccess.body.quoteResponse)).toBe(true);
+    expect(depositMismatches(run, statusSuccess.body)).toEqual([]);
+    // the vault paid with a plain ft_transfer, and that is the deposit 1Click credits
+    expect(parsed.swapDetails?.originChainTxHashes?.map((t) => t.hash)).toEqual([S.payment_tx]);
+    expect(parsed.swapDetails).toMatchObject({ depositedAmount: "1000000", amountOut: "997398", refundedAmount: "0" });
+  });
+
+  it("reconciles as delivered and final, with no refund and no budget back", () => {
+    const r = reconcile(run, statusSuccess.body);
+    expect(r).toMatchObject({ providerStatus: "SUCCESS", outcome: "reported_delivered", providerFinal: true, restoresBudget: false, reportedRefund: "0" });
+    const destination = statusResponseSchema.parse(statusSuccess.body).swapDetails?.destinationChainTxHashes?.map((t) => t.hash);
+    expect(destination).toEqual([S.base_tx]);
+    // the page builds its own explorer link for the Base transaction
+    expect(txExplorerLink("base", S.base_tx)).toBe(`https://basescan.org/tx/${S.base_tx}`);
   });
 });
