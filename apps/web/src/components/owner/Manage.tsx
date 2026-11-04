@@ -39,6 +39,7 @@ import type { SignerState } from "../../useSigner.js";
 import { Badge, Button, Card, Mono, Notice, PageHeader, SectionTitle, type ChipTint } from "../ui.js";
 import { RulesEditor } from "./RulesEditor.js";
 import { AccountLink } from "../AccountLink.js";
+import { AllowlistHint } from "../AllowlistHint.js";
 import { MainnetConfirm, SignReview, TextField, TxLink } from "./SignReview.js";
 
 type Open = null | "fund" | "near" | "withdraw" | "pause" | "add-agent" | { remove: string } | "agent-key" | "rules";
@@ -313,6 +314,7 @@ export function Manage({ config, signer, wallet }: Props) {
       </Section>
 
       <Section id="rules" title="Rules" aside={`version ${vault.policy_version}`} icon={SlidersHorizontal} tint="paid" wide {...sec}>
+        <AllowlistHint policy={policy} />
         <RulesEditor
           {...review}
           vault={vault}

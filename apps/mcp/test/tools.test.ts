@@ -197,6 +197,26 @@ describe("request_payment", () => {
     expect(firstText(result)).toMatch(/^Not paid yet/);
   });
 
+  it("tells the agent who can fix a recipient that is not on the allowlist, and not to retry", async () => {
+    const vault = fakeVault({
+      requestPayment: async () => ({
+        kind: "outcome",
+        outcome: { request_id: "pay-1", status: "BLOCKED", reason_code: "RECIPIENT_NOT_ALLOWED", request_hash: null },
+        txHash: TX,
+      }),
+    });
+    const client = await connect(vault);
+    const result = await client.callTool({ name: "request_payment", arguments: args });
+    const expected =
+      `The recipient ${args.recipient} isn't on this vault's allowlist. The vault owner can add it under Manage → Rules at ` +
+      "https://approve.example/?page=manage&vault=vault.demo.testnet#rules. Do not retry until they do.";
+    // same fields and reason code as any blocked payment; only the explanation says more
+    const out = result.structuredContent as Record<string, unknown>;
+    expect(Object.keys(out).sort()).toEqual(["explanation", "explorer_url", "onchain_status", "policy_decision", "reason_code", "request_id", "tx_hash"]);
+    expect(out).toMatchObject({ request_id: "pay-1", policy_decision: "BLOCKED", onchain_status: "BLOCKED", reason_code: "RECIPIENT_NOT_ALLOWED", explanation: expected, tx_hash: TX });
+    expect(firstText(result)).toContain(`Blocked by the vault policy (RECIPIENT_NOT_ALLOWED): ${expected} Nothing was paid.`);
+  });
+
   it("reports policy blocks with the vault's reason code, and duplicates as such", async () => {
     let code: "HARD_CAP_EXCEEDED" | "DUPLICATE_REQUEST" = "HARD_CAP_EXCEEDED";
     const vault = fakeVault({
@@ -382,6 +402,27 @@ describe("request_cross_chain_payment", () => {
     expect(Date.parse(asked.deadline) - NOW.getTime()).toBe(120 * 60_000);
   });
 
+  it("explains a recipient the vault refuses, with the rules page, and keeps the cross-chain fields", async () => {
+    const vault = fakeVault({
+      requestCrossChain: async () => ({
+        kind: "outcome",
+        outcome: { request_id: "xc-1", status: "BLOCKED", reason_code: "RECIPIENT_NOT_ALLOWED", request_hash: null },
+        txHash: TX,
+      }),
+    });
+    const client = await connect(vault, mockOneClick());
+    const result = await client.callTool({ name: "request_cross_chain_payment", arguments: xc });
+    expect(result.structuredContent).toMatchObject({
+      policy_decision: "BLOCKED",
+      reason_code: "RECIPIENT_NOT_ALLOWED",
+      explanation:
+        `The recipient ${PAYEE} isn't on this vault's allowlist. The vault owner can add it under Manage → Rules at ` +
+        "https://approve.example/?page=manage&vault=vault.demo.testnet#rules. Do not retry until they do.",
+      deposit_address: DEPOSIT,
+      destination_recipient: PAYEE,
+    });
+  });
+
   it("asks 1Click nothing for a recipient the owner did not allow, and sends nothing", async () => {
     const vault = fakeVault();
     const oneClick = mockOneClick();
@@ -389,6 +430,7 @@ describe("request_cross_chain_payment", () => {
     const result = await client.callTool({ name: "request_cross_chain_payment", arguments: { ...xc, recipient: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin" } });
     expect(result.isError).toBe(true);
     expect(firstText(result)).toMatch(/do not allow paying/);
+    expect(firstText(result)).toContain("Manage → Rules at https://approve.example/?page=manage&vault=vault.demo.testnet#rules. Do not retry until they do.");
     expect(oneClick.calls.some((c) => c.method === "quote")).toBe(false);
     expect(vault.requestCrossChain).not.toHaveBeenCalled();
   });

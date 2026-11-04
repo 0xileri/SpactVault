@@ -60,3 +60,37 @@ test("budget numbers that do not add up are flagged, not shown", async ({ page }
   await expect(page.getByText("Today's spending numbers do not add up")).toBeVisible();
   await expect(page.getByTestId(`available-${f.token_id}`)).toHaveCount(0);
 });
+
+test("an empty recipient allowlist is explained on the dashboard and in Manage → Rules, with a link to the rules", async ({ page }) => {
+  // the sandbox vault allows recipients, so the hint is not shown
+  await page.goto("/?page=overview");
+  await expect(page.getByTestId("dashboard")).toBeVisible();
+  await expect(page.getByTestId("allowlist-hint")).toHaveCount(0);
+
+  // a new vault starts with recipients: [] and no cross-chain route; serve the policy that way
+  const rpcOrigin = new URL(f.rpc_url).origin;
+  await page.route(
+    (url) => url.origin === rpcOrigin,
+    async (route) => {
+      const body = route.request().postDataJSON() as { params?: { method_name?: string } } | null;
+      if (body?.params?.method_name !== "get_policy") return route.continue();
+      const response = await route.fetch();
+      const json = (await response.json()) as { result: { result: number[] } };
+      const real = JSON.parse(Buffer.from(json.result.result).toString("utf8")) as Record<string, unknown>;
+      json.result.result = Array.from(Buffer.from(JSON.stringify({ ...real, recipients: [], cross_chain: [] })));
+      await route.fulfill({ response, json });
+    },
+  );
+
+  await page.goto("/?page=overview");
+  const hint = page.getByTestId("allowlist-hint");
+  await expect(hint).toContainText("No recipients allowed yet, so your agent can't pay anyone.");
+  const link = hint.getByRole("link", { name: "Add one in Manage → Rules." });
+  await expect(link).toHaveAttribute("href", "?page=manage#rules");
+
+  await link.click();
+  await expect(page.getByTestId("manage")).toBeVisible();
+  const rules = page.locator("#rules");
+  await expect(rules.getByTestId("allowlist-hint")).toContainText("No recipients allowed yet, so your agent can't pay anyone.");
+  await expect(rules).toBeInViewport();
+});

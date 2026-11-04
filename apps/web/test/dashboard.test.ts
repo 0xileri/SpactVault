@@ -1,7 +1,7 @@
 import type { BudgetView, PaymentRequest, TokenPolicy } from "@spact/shared";
 import { describe, expect, it } from "vitest";
 
-import { budgetProblem, budgetResetNs, isLapsed, outcomeLine, usedPercent, waitingForOwner } from "../src/dashboard.js";
+import { allowlistHint, budgetProblem, budgetResetNs, isLapsed, outcomeLine, usedPercent, waitingForOwner } from "../src/dashboard.js";
 
 const policy: TokenPolicy = { token: "token.test.near", auto_limit: "10000000", hard_tx_limit: "30000000", daily_limit: "50000000" };
 const budget: BudgetView = { token: "token.test.near", day: 20393, daily_limit: "50000000", executed: "3000000", pending: "25000000", available: "22000000" };
@@ -122,5 +122,24 @@ describe("cross-chain requests in the activity list", () => {
     expect(outcomeLine(crossChain("CROSS_CHAIN_PENDING", "EXTERNAL_SETTLEMENT_PENDING"), 1_000n)).toBe(
       "Sent to 1Click's deposit address. Delivery on sol is up to 1Click; the vault cannot check it.",
     );
+  });
+});
+
+describe("allowlistHint", () => {
+  const route = { token: "token.test.near", destination_chain: "base", destination_asset: "nep141:base-usdc.omft.near", recipients: ["0xdF8ec3262A4ED45fa024805B2305F0e5FE73b938"] };
+
+  it("says the agent can pay nobody while a new vault's allowlist is empty", () => {
+    expect(allowlistHint({ recipients: [], cross_chain: [] })).toBe("No recipients allowed yet, so your agent can't pay anyone.");
+  });
+
+  it("says only cross-chain destinations work when the vault has no NEAR recipients but has a route", () => {
+    expect(allowlistHint({ recipients: [], cross_chain: [route] })).toBe("No NEAR recipients allowed yet, so your agent can only pay its cross-chain destinations.");
+    // a route with nobody on it pays nobody either
+    expect(allowlistHint({ recipients: [], cross_chain: [{ ...route, recipients: [] }] })).toBe("No recipients allowed yet, so your agent can't pay anyone.");
+  });
+
+  it("is gone once there is at least one NEAR recipient", () => {
+    expect(allowlistHint({ recipients: ["api.test.near"], cross_chain: [] })).toBeNull();
+    expect(allowlistHint({ recipients: ["api.test.near"], cross_chain: [route] })).toBeNull();
   });
 });

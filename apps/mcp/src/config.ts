@@ -106,6 +106,19 @@ export function reviewLink(config: Pick<McpConfig, "approvalUrl" | "vaultId">, r
   return url.toString();
 }
 
+/**
+ * The owner's rules for this vault (Manage → Rules), where they add a recipient to the allowlist.
+ * Same site and `vault=` as reviewLink; Manage scrolls to `#rules` once the vault is read.
+ */
+export function rulesLink(config: Pick<McpConfig, "approvalUrl" | "vaultId">): string | null {
+  if (!config.approvalUrl) return null;
+  const url = new URL(config.approvalUrl);
+  url.searchParams.set("page", "manage");
+  url.searchParams.set("vault", config.vaultId);
+  url.hash = "rules";
+  return url.toString();
+}
+
 export function explorerTxLink(config: Pick<McpConfig, "explorerTxUrl">, txHash: string): string | null {
   if (!config.explorerTxUrl || !/^[1-9A-HJ-NP-Za-km-z]{32,64}$/.test(txHash)) return null;
   return config.explorerTxUrl.replace("{hash}", txHash);

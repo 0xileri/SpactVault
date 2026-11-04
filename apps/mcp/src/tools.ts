@@ -15,10 +15,10 @@ import {
   verifyQuoteSignature,
   type OneClickApi,
 } from "@spact/intents";
-import { accountId, EXTERNAL_ID_RE, explainReason, type PaymentOutcome, type PaymentRequest, type Status } from "@spact/shared";
+import { accountId, EXTERNAL_ID_RE, explainReason, type PaymentOutcome, type PaymentRequest, type ReasonCode, type Status } from "@spact/shared";
 import { z } from "zod";
 
-import { explorerTxLink, reviewLink, type McpConfig } from "./config.js";
+import { explorerTxLink, reviewLink, rulesLink, type McpConfig } from "./config.js";
 import type { SubmitResult, VaultClient } from "./vault.js";
 
 export const SERVER_NAME = "spact";
@@ -150,6 +150,16 @@ export function policyDecisionOf(outcome: PaymentOutcome): PolicyDecision {
   return "AUTO_APPROVED";
 }
 
+/**
+ * The vault's reason in words. RECIPIENT_NOT_ALLOWED gets the fix spelled out, because a new vault starts
+ * with an empty allowlist and an agent would otherwise retry a payment only the owner can unblock.
+ */
+export function explanationFor(code: ReasonCode, recipient: string, config: Pick<McpConfig, "approvalUrl" | "vaultId">): string {
+  if (code !== "RECIPIENT_NOT_ALLOWED") return explainReason(code);
+  const rules = rulesLink(config);
+  return `The recipient ${recipient} isn't on this vault's allowlist. The vault owner can add it under Manage → Rules ${rules ? `at ${rules}` : "on the vault's website"}. Do not retry until they do.`;
+}
+
 function isoFromNs(ns: string): string {
   return new Date(Number(BigInt(ns) / 1_000_000n)).toISOString();
 }
@@ -275,7 +285,7 @@ export function createSpactServer({ vault, config, oneClick = null, now = () => 
         policy_decision: policyDecisionOf(outcome),
         onchain_status: outcome.status,
         reason_code: outcome.reason_code,
-        explanation: explainReason(outcome.reason_code),
+        explanation: explanationFor(outcome.reason_code, input.recipient, config),
         tx_hash: txHash,
       };
       const review = outcome.status === "AWAITING_APPROVAL" ? reviewLink(config, input.request_id) : null;
@@ -327,9 +337,11 @@ export function createSpactServer({ vault, config, oneClick = null, now = () => 
           (r) => r.token === input.token && r.destination_chain === chainName && r.destination_asset === input.destination_asset,
         );
         if (!allowed?.recipients.includes(input.recipient)) {
+          const rules = rulesLink(config);
           return errorResult(
             `The owner's rules do not allow paying ${input.recipient} on ${chainName} with ${input.destination_asset}. ` +
-              "Ask the owner to allow it on the SpactVault site (Cross-chain page). Nothing was sent.",
+              `Ask the owner to allow it on the SpactVault site: the Cross-chain page, or Manage → Rules${rules ? ` at ${rules}` : ""}. ` +
+              "Do not retry until they do. Nothing was sent.",
           );
         }
       } catch (e) {
@@ -393,7 +405,7 @@ export function createSpactServer({ vault, config, oneClick = null, now = () => 
         policy_decision: policyDecisionOf(outcome),
         onchain_status: outcome.status,
         reason_code: outcome.reason_code,
-        explanation: explainReason(outcome.reason_code),
+        explanation: explanationFor(outcome.reason_code, input.recipient, config),
         tx_hash: txHash,
         deposit_address: filed.deposit_account,
         destination_chain: filed.terms.destination_chain,

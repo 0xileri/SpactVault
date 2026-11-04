@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { explorerTxLink, parseConfig, reviewLink } from "../src/config.js";
+import { explorerTxLink, parseConfig, reviewLink, rulesLink } from "../src/config.js";
 
 const base = {
   SPACT_NETWORK: "testnet",
@@ -42,6 +42,8 @@ describe("links", () => {
       "https://approve.example/?request=pay%3A1&vault=vault.demo.testnet",
     );
     expect(reviewLink({ approvalUrl: null, vaultId: "vault.demo.testnet" }, "pay-1")).toBeNull();
+    expect(rulesLink({ approvalUrl: "https://approve.example/", vaultId: "vault.demo.testnet" })).toBe("https://approve.example/?page=manage&vault=vault.demo.testnet#rules");
+    expect(rulesLink({ approvalUrl: null, vaultId: "vault.demo.testnet" })).toBeNull();
   });
 
   it("links only well-formed transaction hashes", () => {

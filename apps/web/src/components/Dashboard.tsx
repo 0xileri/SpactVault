@@ -5,6 +5,7 @@ import type { FtMetadata, PaymentRequest } from "@spact/shared";
 
 import { type AppConfig } from "../config.js";
 import { AccountLink, Payee } from "./AccountLink.js";
+import { AllowlistHint } from "./AllowlistHint.js";
 import { budgetResetNs, isLapsed, outcomeLine, usedPercent, waitingForOwner, type TokenSummary } from "../dashboard.js";
 import { errorMessage, formatAmount, formatRelative, formatUtc } from "../format.js";
 import { listRequests, loadDashboard, type DashboardSnapshot } from "../near/vault.js";
@@ -264,6 +265,7 @@ export function Dashboard({ config }: { config: AppConfig }) {
           <p>It will not accept or pay anything until the owner unpauses it.</p>
         </Notice>
       ) : null}
+      <AllowlistHint policy={policy} />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {tokens.map((t) => (

@@ -1,4 +1,4 @@
-import { explainReason, parseU128, type BudgetView, type FtMetadata, type PaymentRequest, type Status, type TokenPolicy } from "@spact/shared";
+import { explainReason, parseU128, type BudgetView, type FtMetadata, type PaymentRequest, type Policy, type Status, type TokenPolicy } from "@spact/shared";
 
 const NS_PER_DAY = 86_400_000_000_000n;
 
@@ -84,3 +84,14 @@ export function outcomeLine(request: PaymentRequest, nowNs: bigint): string {
   }
 }
 
+/**
+ * Why the agent cannot pay anyone on NEAR yet, or null once the owner has allowed at least one recipient.
+ * A new vault starts with `recipients: []`, so the agent's first plain payment is refused with
+ * RECIPIENT_NOT_ALLOWED. A vault with cross-chain destinations can still pay those, so it gets its own wording.
+ */
+export function allowlistHint(policy: Pick<Policy, "recipients" | "cross_chain">): string | null {
+  if (policy.recipients.length > 0) return null;
+  return policy.cross_chain.some((r) => r.recipients.length > 0)
+    ? "No NEAR recipients allowed yet, so your agent can only pay its cross-chain destinations."
+    : "No recipients allowed yet, so your agent can't pay anyone.";
+}
