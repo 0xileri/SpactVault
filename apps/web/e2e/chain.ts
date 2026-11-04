@@ -12,6 +12,8 @@ export interface Fixture {
   agent_secret_key: string;
   api_id: string;
   mallory_id: string;
+  /** Exists, never registered with the token. */
+  unregistered_id: string;
   demo_request_id: string;
   /** A ONE_CLICK_ORIGIN_NEAR request the fixture files, waiting for the owner (P1). */
   cross_chain_request_id: string;

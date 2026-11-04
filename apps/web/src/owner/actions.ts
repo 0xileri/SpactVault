@@ -159,6 +159,17 @@ export function registerWithTokenActions(account: string, storageDepositYocto: b
   return [fn("storage_deposit", { account_id: account, registration_only: true }, TOKEN_CALL_GAS, storageDepositYocto.toString())];
 }
 
+/**
+ * Takes tokens out of the vault: owner_withdraw, which only the owner can call, with 1 yoctoNEAR so only a
+ * full-access key can sign it (ADR-002). The vault then calls ft_transfer to `receiverId`. If that account is
+ * not registered with the token, the transfer fails and the tokens stay in the vault, so the page registers
+ * it first when needed (registerWithTokenActions). The vault has no way to send NEAR out: only tokens.
+ */
+export function withdrawActions(token: string, amount: bigint, receiverId: string): WalletAction[] {
+  if (amount <= 0n) throw new OwnerInputError("Enter an amount above zero.");
+  return [fn("owner_withdraw", { token, amount: amount.toString(), receiver_id: receiverId }, OWNER_CALL_GAS, ONE_YOCTO)];
+}
+
 export function topUpNearActions(yocto: bigint): WalletAction[] {
   if (yocto <= 0n) throw new OwnerInputError("Enter an amount above zero.");
   return [{ type: "Transfer", params: { deposit: yocto.toString() } }];

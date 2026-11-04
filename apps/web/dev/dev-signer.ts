@@ -25,7 +25,7 @@ interface Fixture {
 }
 
 /** Owner methods on the demo vault and on vaults the owner creates from the site (sub-accounts of the owner). */
-const OWNER_METHODS = new Set(["approve_request", "reject_request", "execute_request", "set_policy", "set_paused", "add_agent", "remove_agent"]);
+const OWNER_METHODS = new Set(["approve_request", "reject_request", "execute_request", "set_policy", "set_paused", "add_agent", "remove_agent", "owner_withdraw"]);
 /** Token methods for funding a vault and registering accounts with the demo token. */
 const TOKEN_METHODS = new Set(["storage_deposit", "ft_transfer"]);
 const MAX_GAS = 300_000_000_000_000n;
