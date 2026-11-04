@@ -4,8 +4,8 @@ import { Fragment, useCallback, useEffect, useState, type ReactNode } from "reac
 import type { FtMetadata, PaymentRequest } from "@spact/shared";
 
 import { type AppConfig } from "../config.js";
-import { AccountLink } from "./AccountLink.js";
-import { budgetResetNs, isLapsed, outcomeLine, payeeLabel, usedPercent, waitingForOwner, type TokenSummary } from "../dashboard.js";
+import { AccountLink, Payee } from "./AccountLink.js";
+import { budgetResetNs, isLapsed, outcomeLine, usedPercent, waitingForOwner, type TokenSummary } from "../dashboard.js";
 import { errorMessage, formatAmount, formatRelative, formatUtc } from "../format.js";
 import { listRequests, loadDashboard, type DashboardSnapshot } from "../near/vault.js";
 import { useLink } from "../network.js";
@@ -86,6 +86,7 @@ function MoneyStats({ token, nowNs }: { token: TokenSummary; nowNs: bigint }) {
 }
 
 interface ActivityProps {
+  config: Pick<AppConfig, "explorerAccountUrl">;
   requests: PaymentRequest[];
   metadataFor: (token: string) => FtMetadata | null;
   nowNs: bigint;
@@ -113,7 +114,7 @@ function OpenLink({ request }: { request: PaymentRequest }) {
 }
 
 /** Phones: one card per request, since a table does not fit. */
-function ActivityList({ requests, metadataFor, nowNs }: ActivityProps) {
+function ActivityList({ config, requests, metadataFor, nowNs }: ActivityProps) {
   return (
     <ul className="space-y-2 sm:hidden" data-testid="activity-list">
       {requests.map((r) => (
@@ -123,7 +124,7 @@ function ActivityList({ requests, metadataFor, nowNs }: ActivityProps) {
             <span>{formatUtc(r.created_at_ns)}</span>
           </div>
           <p className="mt-2 text-sm">
-            <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Mono>{payeeLabel(r)}</Mono>
+            <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Payee config={config} request={r} />
             <Note request={r} />
           </p>
           <p className="mt-2 text-sm text-zinc-600">{outcomeLine(r, nowNs)}</p>
@@ -136,7 +137,7 @@ function ActivityList({ requests, metadataFor, nowNs }: ActivityProps) {
   );
 }
 
-function ActivityTable({ requests, metadataFor, nowNs }: ActivityProps) {
+function ActivityTable({ config, requests, metadataFor, nowNs }: ActivityProps) {
   return (
     <div className="-mx-6 hidden overflow-x-auto sm:block">
       <table className="w-full min-w-[44rem] text-left text-sm" data-testid="activity">
@@ -156,7 +157,7 @@ function ActivityTable({ requests, metadataFor, nowNs }: ActivityProps) {
             <tr key={r.request_id} className="border-b border-zinc-50 align-top" data-request={r.request_id}>
               <td className="px-6 py-3 whitespace-nowrap text-zinc-600">{formatUtc(r.created_at_ns).replace(" UTC", "")}</td>
               <td className="px-2 py-3">
-                <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Mono>{payeeLabel(r)}</Mono>
+                <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Payee config={config} request={r} />
                 <Note request={r} />
               </td>
               <td className="px-2 py-3">
@@ -289,7 +290,7 @@ export function Dashboard({ config }: { config: AppConfig }) {
                 >
                   <span className="min-w-0">
                     <span className="block text-base">
-                      <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Mono>{payeeLabel(r)}</Mono>
+                      <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Payee config={config} request={r} />
                     </span>
                     {r.reason ? <span className="mt-0.5 block text-sm text-zinc-600">for &ldquo;{r.reason}&rdquo;</span> : null}
                     <span className="mt-1 block text-xs text-zinc-500">
@@ -316,8 +317,8 @@ export function Dashboard({ config }: { config: AppConfig }) {
             <p className="text-sm text-zinc-600">Your agent has not asked for anything yet.</p>
           ) : (
             <>
-              <ActivityTable requests={requests} metadataFor={metadataFor} nowNs={nowNs} />
-              <ActivityList requests={requests} metadataFor={metadataFor} nowNs={nowNs} />
+              <ActivityTable config={config} requests={requests} metadataFor={metadataFor} nowNs={nowNs} />
+              <ActivityList config={config} requests={requests} metadataFor={metadataFor} nowNs={nowNs} />
             </>
           )}
           {canLoadMore ? (

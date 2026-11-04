@@ -4,7 +4,7 @@ import { explainReason, type CrossChainTerms, type PaymentRequest, type ReasonCo
 
 import { assess, buildApproveActions, buildRejectActions, reasonFromError } from "../approval.js";
 import { explorerTxLink, type AppConfig } from "../config.js";
-import { AccountLink } from "./AccountLink.js";
+import { AccountLink, DestinationAddress } from "./AccountLink.js";
 import { outcomeLine } from "../dashboard.js";
 import { errorMessage, formatAmount, formatRelative, formatUtc, shortHash } from "../format.js";
 import { loadSnapshot, waitForRequest, type VaultSnapshot } from "../near/vault.js";
@@ -120,7 +120,7 @@ export function ApprovalPage({
           </p>
           {request.cross_chain ? (
             <>
-              <CrossChainRoute request={request} terms={request.cross_chain} />
+              <CrossChainRoute config={config} request={request} terms={request.cross_chain} />
               <div className="mt-4">
                 <OneClickPanel
                   config={config}
@@ -301,13 +301,13 @@ export function ApprovalPage({
  * 1Click's deposit address on NEAR; 1Click is trusted to pay the final recipient on the other chain.
  * Both are in the hash the owner signs, so neither can be swapped after this page shows them.
  */
-function CrossChainRoute({ request, terms }: { request: PaymentRequest; terms: CrossChainTerms }) {
+function CrossChainRoute({ config, request, terms }: { config: AppConfig; request: PaymentRequest; terms: CrossChainTerms }) {
   return (
     <div className="mt-3 space-y-3" data-testid="cross-chain">
       <p className="text-base text-zinc-600">
         to{" "}
         <span className="text-lg font-semibold text-ink" data-testid="cross-chain-recipient">
-          <Mono>{terms.destination_recipient}</Mono>
+          <DestinationAddress chain={terms.destination_chain} address={terms.destination_recipient} />
         </span>{" "}
         on <span className="font-semibold text-ink" data-testid="cross-chain-chain">{terms.destination_chain}</span>, through NEAR Intents 1Click
       </p>
@@ -315,19 +315,19 @@ function CrossChainRoute({ request, terms }: { request: PaymentRequest; terms: C
         <div className="grid gap-1 p-3 sm:grid-cols-[13rem_1fr] sm:gap-4">
           <dt className="text-sm text-zinc-500">1Click deposit address on NEAR (receives the tokens)</dt>
           <dd className="min-w-0 text-sm text-ink" data-testid="recipient">
-            <Mono>{request.recipient}</Mono>
+            <AccountLink config={config} account={request.recipient} />
           </dd>
         </div>
         <div className="grid gap-1 p-3 sm:grid-cols-[13rem_1fr] sm:gap-4">
           <dt className="text-sm text-zinc-500">Final recipient on {terms.destination_chain} (1Click pays them)</dt>
           <dd className="min-w-0 text-sm text-ink">
-            <Mono>{terms.destination_recipient}</Mono>
+            <DestinationAddress chain={terms.destination_chain} address={terms.destination_recipient} />
           </dd>
         </div>
         <div className="grid gap-1 p-3 sm:grid-cols-[13rem_1fr] sm:gap-4">
           <dt className="text-sm text-zinc-500">Refunds go to</dt>
           <dd className="min-w-0 text-sm text-ink" data-testid="cross-chain-refund">
-            <Mono>{terms.refund_to}</Mono>
+            <AccountLink config={config} account={terms.refund_to} />
           </dd>
         </div>
       </dl>

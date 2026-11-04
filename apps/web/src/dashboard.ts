@@ -84,8 +84,3 @@ export function outcomeLine(request: PaymentRequest, nowNs: bigint): string {
   }
 }
 
-/** Who a payment is for, in words: the payee on NEAR, or the final recipient of a 1Click route. */
-export function payeeLabel(request: PaymentRequest): string {
-  const t = request.cross_chain;
-  return t ? `${t.destination_recipient} on ${t.destination_chain} via 1Click` : request.recipient;
-}

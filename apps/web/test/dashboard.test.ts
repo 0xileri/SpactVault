@@ -1,7 +1,7 @@
 import type { BudgetView, PaymentRequest, TokenPolicy } from "@spact/shared";
 import { describe, expect, it } from "vitest";
 
-import { budgetProblem, budgetResetNs, isLapsed, outcomeLine, payeeLabel, usedPercent, waitingForOwner } from "../src/dashboard.js";
+import { budgetProblem, budgetResetNs, isLapsed, outcomeLine, usedPercent, waitingForOwner } from "../src/dashboard.js";
 
 const policy: TokenPolicy = { token: "token.test.near", auto_limit: "10000000", hard_tx_limit: "30000000", daily_limit: "50000000" };
 const budget: BudgetView = { token: "token.test.near", day: 20393, daily_limit: "50000000", executed: "3000000", pending: "25000000", available: "22000000" };
@@ -114,14 +114,13 @@ describe("cross-chain requests in the activity list", () => {
     reason_code,
   });
 
-  it("names the final recipient and the route, and says delivery is up to 1Click", () => {
-    expect(payeeLabel(crossChain("AWAITING_APPROVAL", "REQUIRES_OWNER_APPROVAL"))).toBe("7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV on sol via 1Click");
+  // who it is for (final recipient, chain, 1Click) is rendered by components/AccountLink.tsx Payee, checked in the browser tests
+  it("says a cross-chain payment waits for the owner, and that delivery is up to 1Click", () => {
     expect(outcomeLine(crossChain("AWAITING_APPROVAL", "REQUIRES_OWNER_APPROVAL"), 1_000n)).toBe(
       "A cross-chain payment, so it waits for your OK whatever the amount.",
     );
     expect(outcomeLine(crossChain("CROSS_CHAIN_PENDING", "EXTERNAL_SETTLEMENT_PENDING"), 1_000n)).toBe(
       "Sent to 1Click's deposit address. Delivery on sol is up to 1Click; the vault cannot check it.",
     );
-    expect(payeeLabel(request("d", "SETTLED", 2_000n))).toBe("api.test.near");
   });
 });

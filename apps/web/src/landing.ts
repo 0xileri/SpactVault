@@ -42,7 +42,8 @@ export interface LiveCounts {
 
 export function liveCounts(requests: PaymentRequest[], nowNs: bigint, stored: number): LiveCounts {
   return {
-    paid: requests.filter((r) => r.status === "SETTLED").length,
+    // a cross-chain payment the vault sent to 1Click (CROSS_CHAIN_PENDING) is paid as far as the vault goes
+    paid: requests.filter((r) => r.status === "SETTLED" || r.status === "CROSS_CHAIN_PENDING").length,
     waiting: waitingForOwner(requests, nowNs).length,
     read: requests.length,
     stored,

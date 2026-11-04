@@ -19,7 +19,15 @@ describe("parseConfig", () => {
     expect(explorerAccountLink(cfg, "vault.testnet")).toBe("https://testnet.nearblocks.io/address/vault.testnet");
     expect(explorerAccountLink(cfg, "../evil")).toBeNull();
     expect(explorerAccountLink(parseConfig({ ...BASE, VITE_NEAR_NETWORK: "sandbox", VITE_NEAR_RPC_URL: "http://127.0.0.1:3030" }), "vault.testnet")).toBeNull();
-    expect(() => parseConfig({ ...BASE, VITE_EXPLORER_ACCOUNT_URL: "https://x.example/a" })).toThrow(/\{account\}/);
+    // a plain base URL works too: the placeholder is appended (VITE_EXPLORER_ACCOUNT_URL=https://nearblocks.io/address/)
+    const base = parseConfig({ ...BASE, VITE_EXPLORER_TX_URL: "https://nearblocks.io/txns/", VITE_EXPLORER_ACCOUNT_URL: "https://nearblocks.io/address" });
+    expect(explorerTxLink(base, "H6AjpNU5m8zdVFqE6TAE5uvQx4SVCT3ToYMBg8sstj8f")).toBe("https://nearblocks.io/txns/H6AjpNU5m8zdVFqE6TAE5uvQx4SVCT3ToYMBg8sstj8f");
+    expect(explorerAccountLink(base, "9dc744e29f8a079c6888dbdaafa8fb618b08c3734d00f4f25c8b31050ea086c9")).toBe(
+      "https://nearblocks.io/address/9dc744e29f8a079c6888dbdaafa8fb618b08c3734d00f4f25c8b31050ea086c9",
+    );
+    // only http(s): a setting cannot turn every link into a script, and a non-URL fails the build
+    expect(() => parseConfig({ ...BASE, VITE_EXPLORER_ACCOUNT_URL: "javascript:alert(1)//{account}" })).toThrow(/http/);
+    expect(() => parseConfig({ ...BASE, VITE_EXPLORER_TX_URL: "nearblocks.io/txns/" })).toThrow(/valid URL/);
     expect(cfg.securityReportUrl).toBe("security-report.json");
     expect(parseConfig({ ...BASE, VITE_SECURITY_REPORT_URL: "https://ci.example/report.json" }).securityReportUrl).toBe("https://ci.example/report.json");
     expect(() => parseConfig({ ...BASE, VITE_SECURITY_REPORT_URL: "http://evil.example/r.json" })).toThrow(/https/);
@@ -50,7 +58,7 @@ describe("parseConfig", () => {
     expect(() => parseConfig({ ...BASE, VITE_NEAR_NETWORK: "devnet" })).toThrow(ConfigError);
     expect(() => parseConfig({ ...BASE, VITE_VAULT_ID: "Vault.testnet" })).toThrow(ConfigError);
     expect(() => parseConfig({ ...BASE, VITE_NEAR_RPC_URL: "http://rpc.example.org" })).toThrow(/https/);
-    expect(() => parseConfig({ ...BASE, VITE_EXPLORER_TX_URL: "https://x.example/tx" })).toThrow(/\{hash\}/);
+    expect(parseConfig({ ...BASE, VITE_EXPLORER_TX_URL: "https://x.example/tx" }).explorerTxUrl).toBe("https://x.example/tx/{hash}");
   });
 });
 

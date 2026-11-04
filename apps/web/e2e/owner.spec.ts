@@ -234,6 +234,11 @@ test("pause and unpause", async ({ page }) => {
   await page.getByTestId("open-pause").click();
   await sign(page);
   await expect(page.getByTestId("paused-state")).toHaveAttribute("data-paused", "true");
+  // the confirmed transaction links to the explorer by its full hash
+  const tx = page.getByTestId("confirmed-pause").getByTestId("tx-link");
+  const hash = (await tx.getAttribute("data-hash")) ?? "";
+  expect(hash).toMatch(/^[1-9A-HJ-NP-Za-km-z]{43,44}$/);
+  await expect(tx).toHaveAttribute("href", `https://explorer.test/txns/${hash}`);
   expect((await view<{ paused: boolean }>(VAULT2, "get_config")).paused).toBe(true);
   await page.getByTestId("open-pause").click();
   await sign(page);

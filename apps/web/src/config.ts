@@ -57,6 +57,17 @@ function isLocalHost(url: URL): boolean {
   return url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
 }
 
+/**
+ * An explorer link template: `https://nearblocks.io/txns/{hash}`, or just the base URL
+ * (`https://nearblocks.io/txns/`), which gets the placeholder appended. Only http(s) URLs, so a setting
+ * cannot turn every link on the site into a script.
+ */
+function explorerTemplate(value: string, placeholder: "{hash}" | "{account}", name: string): string {
+  const template = value.includes(placeholder) ? value : `${value}${value.endsWith("/") ? "" : "/"}${placeholder}`;
+  parseUrl(template.replace(placeholder, "x"), name);
+  return template;
+}
+
 function parseUrl(value: string | undefined, name: string): URL {
   if (!value) throw new ConfigError(`${name} is required`);
   let url: URL;
@@ -125,15 +136,10 @@ function parseCommon(env: Record<string, string | undefined>): CommonConfig {
     devSignerUrl = url.toString().replace(/\/$/, "");
   }
 
-  const explorerTxUrl = env.VITE_EXPLORER_TX_URL || DEFAULT_EXPLORERS[network];
-  if (explorerTxUrl !== null && !explorerTxUrl.includes("{hash}")) {
-    throw new ConfigError("VITE_EXPLORER_TX_URL must contain {hash}");
-  }
-
-  const explorerAccountUrl = env.VITE_EXPLORER_ACCOUNT_URL || DEFAULT_ACCOUNT_EXPLORERS[network];
-  if (explorerAccountUrl !== null && !explorerAccountUrl.includes("{account}")) {
-    throw new ConfigError("VITE_EXPLORER_ACCOUNT_URL must contain {account}");
-  }
+  const explorerTxUrl = env.VITE_EXPLORER_TX_URL ? explorerTemplate(env.VITE_EXPLORER_TX_URL, "{hash}", "VITE_EXPLORER_TX_URL") : DEFAULT_EXPLORERS[network];
+  const explorerAccountUrl = env.VITE_EXPLORER_ACCOUNT_URL
+    ? explorerTemplate(env.VITE_EXPLORER_ACCOUNT_URL, "{account}", "VITE_EXPLORER_ACCOUNT_URL")
+    : DEFAULT_ACCOUNT_EXPLORERS[network];
 
   const securityReportUrl = env.VITE_SECURITY_REPORT_URL || "security-report.json";
   if (/^[a-z][a-z0-9+.-]*:/i.test(securityReportUrl)) {

@@ -50,6 +50,7 @@ export function OneClickPanel({
   onRegistered: () => void;
 }) {
   const [registering, setRegistering] = useState(false);
+  const [registered, setRegistered] = useState(false);
   const terms = request.cross_chain;
   if (!terms || !tracking) return null;
   const { check, reconciliation } = tracking;
@@ -126,28 +127,38 @@ export function OneClickPanel({
             config={config}
             signer={signer}
             wallet={wallet}
-            title="Register the deposit address with the token"
+            title="Step 1 of 2: register the deposit address with the token"
             receiverId={request.token}
             signerId={owner}
             actions={registerWithTokenActions(request.recipient, check.storageMin ?? 0n)}
             changes={[
               `Pays ${formatNear(check.storageMin ?? 0n, 5)} NEAR so ${request.recipient} can hold ${request.token}. Without it the vault's transfer fails and nothing is paid.`,
+              "This is not the approval. Nothing is paid yet: after this, the page asks you to approve and pay (step 2 of 2).",
             ]}
             blocked={check.storageMin === null ? "Could not read what registering costs." : null}
             onCancel={() => setRegistering(false)}
             onDone={() => {
               setRegistering(false);
+              setRegistered(true);
               onRegistered();
             }}
           />
         ) : (
           <div className="flex flex-wrap items-center gap-3">
-            <p className="text-sm text-amber-800">The deposit address is not registered with the token yet.</p>
+            <p className="text-sm text-amber-800">
+              <strong>Step 1 of 2:</strong> the deposit address is not registered with the token yet. Register it first; approving is step 2.
+            </p>
             <Button variant="secondary" onClick={() => setRegistering(true)} testId="register-deposit">
-              Register it
+              Step 1: register it
             </Button>
           </div>
         )
+      ) : null}
+
+      {open && registered && check.registered !== false ? (
+        <Notice tone="good" title="Step 1 of 2 done: the deposit address is registered">
+          <p data-testid="registered-next">Nothing is paid yet. Step 2 of 2: approve and pay below.</p>
+        </Notice>
       ) : null}
 
       {request.status === "CROSS_CHAIN_PENDING" ? (
