@@ -3,8 +3,10 @@
 Draft for the @spactvault account. **Nothing here has been posted.** The owner posts it, attaches the demo video or screenshots, and shares the post's link, which becomes `demoUrl` in the submission (HACKATHON.md).
 
 Before posting, check:
-- the video or screenshots are attached (HACKATHON.md requires one of them);
-- the text says it was built at NEAR HACKATHON and tags @NEARProtocol and #NEARHackathon;
+- the demo video is attached (HACKATHON.md accepts a video or screenshots; Q-012 says screenshots are not enough when judges cannot open the demo, so a video is the safe choice);
+- the text says it was built at NEAR HACKATHON and tags @NEARProtocol and #NEARHackathon (HACKATHON.md requires both);
+- the optional tags: HACKATHON.md names @NearLegion and @NearBuilders. These drafts use @NearBuilders and @NEAR_hckthn as the owner asked; @NEAR_hckthn is not in HACKATHON.md, so check that the account exists, or swap it for @NearLegion (same length);
+- the video shows one complete moment, from a real user action to a visible result (HACKATHON.md "A good demo post"): for example the agent asking from Claude Code, the owner approving in Meteor, and the USDC arriving on Base;
 - both links open: https://spactvault.xyz and https://github.com/0xileri/SpactVault.
 
 ## Short version (276 of 280)

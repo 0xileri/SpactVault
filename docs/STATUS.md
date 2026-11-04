@@ -6,7 +6,7 @@ Last updated 2026-11-04 (UTC). Network mode: **NEAR mainnet** since 2026-11-01. 
 
 | Step | State |
 |---|---|
-| 1. Verify rules and SDKs, write INTEGRATIONS.md | done; `HACKATHON.md` added from the owner's copy (live version not fetched) |
+| 1. Verify rules and SDKs, write INTEGRATIONS.md | done; `HACKATHON.md` from the owner's copy of 2026-10-23, replaced on 2026-11-04 by the owner's paste of the live version (not fetched by the agent: the host is unreachable here) |
 | 2. ARCHITECTURE, THREAT_MODEL, DECISIONS, STATUS | done |
 | 3. Monorepo with lint/typecheck/test/build baseline | done (pnpm + cargo workspaces, CI workflow) |
 | 4. Vault with owner/agent auth and policy validation, negative tests | done |
@@ -357,7 +357,8 @@ Agent key (2026-10-24): the agent now signs with a function-call key that reache
 **Next:**
 1. **Demo video and the X post** (owner). Draft text: `docs/DEMO_POST.md`. A short screen recording of the run on https://spactvault.xyz: the agent asks for a payment from Claude Code, the vault holds it, the owner approves in Meteor, the USDC lands on Base; then the Security Lab. The owner posts it from the @spactvault account on X, saying it was built at NEAR HACKATHON and tagging @NEARProtocol and #NEARHackathon, with the video attached (HACKATHON.md). Claude can draft the text; the owner posts it and shares the link.
 2. **The submission payload** (HACKATHON.md "Submission API"; draft in `docs/SUBMISSION.md`, which is gitignored). Tracks `security`, `agents` and `defi`; `projectUrl` https://github.com/0xileri/SpactVault; `demoUrl` the X post from step 2; `nearAddress` the owner's payout account; the owner's name, email and team size; an `idea` of 20 to 2,000 characters; `consent` only after the owner agrees to the contact notice. Claude prints the full JSON and sends nothing until the owner says yes: there is one submission per project, a mistake is fixed at https://nearhackathon.com/request-changes and never by sending again, and the window closes 2026-11-14T23:59:00Z.
-3. **Tags** (owner): `pre-hackathon` on the first commit and `hackathon-submission` on main as submitted (README "Built during NEAR HACKATHON").
-4. **Optional:**
+3. **Keep the hosted demo up** until 2026-11-18, ideally 2026-11-25 (HACKATHON.md Q-012): https://spactvault.xyz on Railway, and the repository public through judging (Q-014).
+4. **Tags** (owner): `pre-hackathon` on the first commit and `hackathon-submission` on main as submitted (README "Built during NEAR HACKATHON").
+5. **Optional:**
    - the testnet approval transaction hashes for `demo-approve-1` and `agent-approve-1`, if the owner has them;
    - on the owner's machine, with a bot from @BotFather, run the notifier (apps/notifier/README.md) against the testnet vault and check that the alert arrives on the phone.

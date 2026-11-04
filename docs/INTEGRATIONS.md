@@ -224,8 +224,13 @@ What the answers changed in the code: null-tolerant status fields, the earlier o
 | NEAR Intents / 1Click | adapter, vault route, MCP tool and website pages built and tested locally (P1, ADR-032, ADR-033); live quote and status answers recorded and tested (ADR-034); **first live payment on mainnet on 2026-11-04** (1 USDC to Base, 1Click `SUCCESS`; STATUS "Mainnet cross-chain run") | see "NEAR Intents / 1Click" above |
 | Telegram Bot API | not started | |
 
-## Hackathon submission (from `HACKATHON.md`, owner copy of 2026-10-23)
+## Hackathon submission (from `HACKATHON.md`, owner's paste of the live version, 2026-11-04)
 
 - Submissions are accepted only from 2026-11-01T00:00:00Z to 2026-11-14T23:59:00Z, through `POST https://nearhackathon.com/api/applications` or the form. Outside that window the API returns 403.
-- One attempt per team, no edits. The agent prints the full payload and sends only after the human confirms. The payload is never committed (it contains personal data).
-- Track ids that fit SpactVault: `security` (primary, hints: agent security, function-call keys, TEE attestation) and `agents`. The human decides.
+- One submission per project, and each repository once (`projectUrl` is unique; 409 otherwise). One email can send at most 2 submissions, for different projects that are independent and disclosed in each other's README (Q-015). The agent prints the full payload and sends only after the human confirms. The payload is never committed (it contains personal data); the draft is the gitignored `docs/SUBMISSION.md`.
+- A mistake in a saved submission is fixed at https://nearhackathon.com/request-changes, which the organizers review by hand, never by submitting again.
+- The demo post says the project was built at NEAR HACKATHON, tags @NEARProtocol and #NEARHackathon (optionally @NearLegion and @NearBuilders), and has the video or screenshots attached. Draft: `docs/DEMO_POST.md`.
+- Code from the 2026-10-19 announcement onward counts (Q-001); provenance by tags `pre-hackathon` and `hackathon-submission` plus a README section linking the diff (Q-003); libraries and AI code listed in the README (Q-005). See DECISIONS ADR-000.
+- Track ids chosen for SpactVault: `security`, `agents` and `defi` (README "Tracks"). The human confirms before sending.
+- A hosted demo should stay up until 2026-11-18, ideally 2026-11-25 (Q-012). The repository stays public through judging, with a LICENSE file (Q-014; MIT).
+- 1Click needs no JWT; without one it charges a 0.2% fee (Q-006). There is no 1Click testnet (Q-007), which is why the cross-chain route ran with tiny amounts on mainnet.

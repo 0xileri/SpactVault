@@ -260,9 +260,9 @@ The website is the owner's way to create a vault (above). Before it existed, the
 
 ## Built during NEAR HACKATHON
 
-NEAR HACKATHON was announced on 2026-10-19. Under HACKATHON.md Q-001, code written from the announcement onward counts, and anything older is baseline. **All code in this repository dates from after the announcement:** the first commit, `19d6119` (2026-10-23 22:01 UTC), adds the spec and the agent instructions, and the code follows that evening. There is no earlier baseline. Check it with `git log --reverse --format='%h %ad %s' --date=iso | head`. DECISIONS ADR-000 has the record.
+NEAR HACKATHON was announced on 2026-10-19. Under HACKATHON.md Q-001, code written from the announcement onward counts (the window runs from then to 2026-11-14), and earlier commits are baseline. **All code in this repository dates from after the announcement:** the first commit, `19d6119` (2026-10-23 22:01 UTC), adds the spec and the agent instructions, and the code follows that evening. There is no earlier baseline. Check it with `git log --reverse --format='%h %ad %s' --date=iso | head`. DECISIONS ADR-000 has the record.
 
-Two tags mark the span: `pre-hackathon` on the first commit and `hackathon-submission` on main as submitted. Everything built between them: https://github.com/0xileri/SpactVault/compare/pre-hackathon...hackathon-submission (it works once both tags are pushed).
+As Q-003 asks, two tags mark the span, and this section links the diff: `pre-hackathon` on the first commit and `hackathon-submission` on main as submitted. Everything built between them: https://github.com/0xileri/SpactVault/compare/pre-hackathon...hackathon-submission (it works once both tags are pushed).
 
 Merged pull requests, by merge date (UTC):
 - **Oct 23-24:** the vault contract with unit tests, sandbox tests on a real NEAR node and the TypeScript baseline (#1); the approval page, local demo, browser tests and testnet deploy script (#2); the agent's function-call key (#3); the MCP server (#4); the Telegram alert (#5); the owner dashboard (#6); the Security Lab (#7); GitHub Pages with the CI-built report (#8).
@@ -274,6 +274,16 @@ Merged pull requests, by merge date (UTC):
 - **Nov 4:** Take money out (#24); a simpler site with one action (#25); **the first cross-chain payment on mainnet, 1 USDC to Base, `SUCCESS`** (#26); the site pointed at that vault, every account and hash linked (#27); this README's mainnet record and the MIT license (#28); status cleanup (#29); the judges' README, provenance and the submission drafts (#30).
 
 The code and docs were written with an AI coding agent (Claude Code) working from AGENTS.md; the owner directed the work and did every wallet step.
+
+SpactVault is a new project, not an existing product or an older project with a new feature (Q-002, Q-004).
+
+**Libraries, tools and AI code (Q-005).** No template or boilerplate, and no library of the owner's from before the hackathon. AI code: the code and docs were written with Claude Code (above). Open-source dependencies, at the versions the lockfiles pin:
+- **Contract (Rust):** `near-sdk` 5.29.1; tests: `near-workspaces` 0.23.0 (local NEAR sandbox node), `near-contract-standards` 5.29.1 (the mock token), `tokio`, `anyhow`, `serde_json`.
+- **Website:** React 19, Vite 8, Tailwind CSS 4, `@hot-labs/near-connect` 0.11.4 (wallet selector), `near-api-js` 7.2.0, Phosphor icons, the Space Grotesk and Geist Mono fonts (Fontsource); served by Caddy 2.11 on Railway.
+- **MCP server:** `@modelcontextprotocol/server` 2.3.1, `near-api-js` 7.2.0, `zod` 4.
+- **Shared and 1Click packages:** `zod` 4, `@noble/hashes` and `@noble/curves` (request hashes and 1Click's ed25519 quote signatures).
+- **Tooling:** TypeScript 6, ESLint 10, Vitest 5, Playwright 1.63, pnpm 10, Rust 1.97.
+- **Services:** NEAR mainnet and testnet RPC (FastNEAR's public endpoints), the NEAR Intents 1Click API (a JWT is optional under Q-006: the site sends none, and the MCP server takes one in `ONE_CLICK_JWT`), the Telegram Bot API.
 
 ## Repo map
 

@@ -4,9 +4,9 @@ Short ADRs. Each records the date, the choice, and why.
 
 ## ADR-000: Implementation started on 2026-10-23, after the announcement (2026-10-23, settled 2026-11-04)
 
-The owner told the coding agent to start building on 2026-10-23. NEAR HACKATHON was announced on 2026-10-19, and the live `HACKATHON.md` (synced into this repository on 2026-11-04) settles it in Q-001: code written from the announcement onward is allowed, and anything older is baseline. The first commit, `19d6119`, is from 2026-10-23 22:01 UTC, so every commit is in scope and there is no baseline. This is allowed, not a risk.
+The owner told the coding agent to start building on 2026-10-23. NEAR HACKATHON was announced on 2026-10-19, and the live `HACKATHON.md` (synced into this repository on 2026-11-04) settles it in Q-001: code from the announcement on 2026-10-19 is allowed (the window runs from then to 2026-11-14), and earlier commits are baseline. The first commit, `19d6119`, is from 2026-10-23 22:01 UTC, so every commit is in scope and there is no baseline. This is allowed, not a risk.
 
-Provenance (Q-003): the README section "Built during NEAR HACKATHON" says so and lists the merged pull requests by date. The tag `pre-hackathon` marks the first commit and `hackathon-submission` main as submitted, so the compare view between them shows everything built. The owner creates and pushes both tags.
+Provenance (Q-003 asks for a dedicated branch, or the tags `pre-hackathon` and `hackathon-submission`, plus a README section linking the diff): the README section "Built during NEAR HACKATHON" says so, lists the merged pull requests by date and the libraries and AI code (Q-005), and links the diff. The tag `pre-hackathon` marks the first commit and `hackathon-submission` main as submitted, so the compare view between them shows everything built. The owner creates and pushes both tags.
 
 Before 2026-11-04 this ADR read the owner's copy of 2026-10-23, which gave the start as 2026-11-01 with no rule on earlier code, and left eligibility as an open question for the organizers.
 
@@ -404,7 +404,7 @@ After the mainnet cross-chain run (STATUS "Mainnet cross-chain run"), the owner 
 
 ## Open questions (from AGENTS.md section 17)
 
-- [x] Official `HACKATHON.md`: at the repo root; owner copy of 2026-10-23, synced with the live version on 2026-11-04.
+- [x] Official `HACKATHON.md`: at the repo root; the owner's copy of 2026-10-23, replaced on 2026-11-04 by the owner's paste of the live version.
 - [x] Eligibility of code written from 2026-10-23: allowed under HACKATHON.md Q-001, which counts code from the 2026-10-19 announcement (ADR-000).
 - [x] Demo stablecoin: native USDC on mainnet, checked on chain by the deploy script (ADR-028). Open: 1Click support (P1).
 - [x] Mainnet protocol version >= 84: `scripts/deploy-mainnet.sh` reads it from the RPC and stops below 84 (ADR-028). Testnet: protocol 88 (2026-10-25).
