@@ -3,7 +3,8 @@ import { Fragment, useCallback, useEffect, useState, type ReactNode } from "reac
 
 import type { FtMetadata, PaymentRequest } from "@spact/shared";
 
-import { explorerAccountLink, type AppConfig } from "../config.js";
+import { type AppConfig } from "../config.js";
+import { AccountLink } from "./AccountLink.js";
 import { budgetResetNs, isLapsed, outcomeLine, payeeLabel, usedPercent, waitingForOwner, type TokenSummary } from "../dashboard.js";
 import { errorMessage, formatAmount, formatRelative, formatUtc } from "../format.js";
 import { listRequests, loadDashboard, type DashboardSnapshot } from "../near/vault.js";
@@ -17,16 +18,6 @@ function requestLink(id: string): string {
   return `?request=${encodeURIComponent(id)}`;
 }
 
-function AccountLink({ config, account }: { config: AppConfig; account: string }) {
-  const href = explorerAccountLink(config, account);
-  return href ? (
-    <a href={href} target="_blank" rel="noreferrer noopener" className="underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-600">
-      <Mono>{account}</Mono>
-    </a>
-  ) : (
-    <Mono>{account}</Mono>
-  );
-}
 
 function SectionHeading({ title, children }: { title: string; children?: ReactNode }) {
   return (

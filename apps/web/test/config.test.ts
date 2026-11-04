@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ConfigError, explorerAccountLink, explorerTxLink, networksOf, parseConfig, parseSiteConfig, parseSiteConfigs } from "../src/config.js";
+import { ConfigError, explorerAccountLink, explorerTxLink, parseConfig, parseSiteConfig, parseSiteConfigs } from "../src/config.js";
 
 const BASE = {
   VITE_NEAR_NETWORK: "testnet",
@@ -119,7 +119,6 @@ describe("more than one vault per network", () => {
       ["testnet", "vault.owner.testnet", null],
     ]);
     expect(configs[1]).toMatchObject({ rpcUrl: "https://rpc.example.org/", explorerTxUrl: "https://nearblocks.io/txns/{hash}" });
-    expect(networksOf(configs)).toEqual(["mainnet", "testnet"]);
   });
 
   it("refuses extra vaults that are malformed, listed twice, unlabeled safely or without a default", () => {

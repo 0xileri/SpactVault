@@ -5,8 +5,9 @@
  * - One typeface, Space Grotesk, plus Geist Mono for code, account names and hashes.
  * - Violet ink and the brand violet on white; neutral "zinc" grays only.
  * - Green, amber and rose appear only as the paid / waits / blocked signals, never as brand color.
- * - No background gradients; depth comes from a faint grain, hairlines and tinted shadows.
- * - One motion curve for everything that moves.
+ * - The front page is a stack of color bands (ADR-037): soft gradients, one hue per section, so each part
+ *   reads as its own step. App pages stay plain paper.
+ * - One motion curve for everything that moves, and nothing moves with prefers-reduced-motion.
  */
 @theme {
   --font-sans: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
@@ -77,9 +78,182 @@ body::after {
   filter: none;
 }
 
+/* Front page color bands (ADR-037). Each band fades into the next, so the page reads as one flow. */
+.band {
+  position: relative;
+}
+
+.band-hero {
+  background:
+    radial-gradient(60rem 30rem at 85% 10%, rgb(106 76 255 / 0.2), transparent 60%),
+    linear-gradient(180deg, #e9e2ff 0%, #f1ecff 60%, #f4efff 100%);
+}
+
+.band-lilac {
+  background: linear-gradient(180deg, #f4efff 0%, #ebe2ff 50%, #f6eefc 100%);
+}
+
+.band-mint {
+  background: linear-gradient(180deg, #f6eefc 0%, #d9f6e8 35%, #e6f9f0 100%);
+}
+
+.band-sky {
+  background: linear-gradient(180deg, #e6f9f0 0%, #d6ebff 40%, #e2e8ff 100%);
+}
+
+.band-ink {
+  background:
+    radial-gradient(40rem 22rem at 15% 0%, rgb(106 76 255 / 0.45), transparent 70%),
+    radial-gradient(30rem 20rem at 90% 100%, rgb(56 189 248 / 0.18), transparent 70%),
+    #140f2b;
+}
+
+/* Two soft lights drifting behind the hero, faded out before its lower edge so no seam shows. */
+.aurora-field {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+}
+
+.aurora {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(64px);
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+.aurora-a {
+  top: -8rem;
+  left: -6rem;
+  width: 28rem;
+  height: 28rem;
+  background: rgb(106 76 255 / 0.35);
+  animation: drift 18s var(--ease-fluid) infinite alternate;
+}
+
+.aurora-b {
+  right: -8rem;
+  bottom: -10rem;
+  width: 32rem;
+  height: 32rem;
+  background: rgb(56 189 248 / 0.25);
+  animation: drift 22s var(--ease-fluid) infinite alternate-reverse;
+}
+
+@keyframes drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(4rem, 2rem, 0) scale(1.15);
+  }
+}
+
+/* The hero's parts rise in, one after another, on load. */
+.rise {
+  animation: rise 900ms var(--ease-fluid) both;
+}
+
+.rise-1 {
+  animation-delay: 80ms;
+}
+
+.rise-2 {
+  animation-delay: 180ms;
+}
+
+.rise-3 {
+  animation-delay: 300ms;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(1.5rem);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+/* The live dot breathes. */
+.pulse-dot {
+  animation: pulse-dot 2.4s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(16 185 129 / 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgb(16 185 129 / 0);
+  }
+}
+
+/* Cards lift a little under the pointer. */
+.lift {
+  transition:
+    transform 400ms var(--ease-fluid),
+    box-shadow 400ms var(--ease-fluid);
+}
+
+.lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 18px 40px -18px rgb(20 15 43 / 0.25);
+}
+
+/* The day's budget bar fills from zero. */
+.grow-bar {
+  transform-origin: left;
+  animation: grow 1200ms var(--ease-fluid) both;
+}
+
+@keyframes grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* The cross-chain rings turn slowly. */
+.orbit {
+  animation: spin 40s linear infinite;
+}
+
+.orbit-slow {
+  animation-duration: 70s;
+  animation-direction: reverse;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+
+  .aurora,
+  .rise,
+  .pulse-dot,
+  .grow-bar,
+  .orbit {
+    animation: none;
+  }
+
+  .lift,
+  .lift:hover {
+    transition: none;
+    transform: none;
   }
 
   .reveal {

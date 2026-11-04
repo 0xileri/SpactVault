@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseSiteConfigs } from "../src/config.js";
-import { chooseConfig, placeLink, placeOf, switchHref, withNetwork } from "../src/network.js";
+import { chooseConfig, placeLink, placeOf, withNetwork } from "../src/network.js";
 
 const configs = parseSiteConfigs({
   VITE_NEAR_NETWORK: "mainnet",
@@ -41,13 +41,6 @@ describe("links", () => {
     expect(withNetwork("?page=overview", null)).toBe("?page=overview");
   });
 
-  it("switches to the same page on the other network, dropping the request and vault of the old one", () => {
-    expect(switchHref("?page=overview", "testnet", "mainnet")).toBe("./?page=overview&network=testnet");
-    expect(switchHref("?page=overview&network=testnet", "mainnet", "mainnet")).toBe("./?page=overview");
-    expect(switchHref("?request=r1&vault=vault.owner.near", "testnet", "mainnet")).toBe("./?network=testnet");
-    expect(switchHref("", "mainnet", "mainnet")).toBe("./");
-    expect(switchHref("?page=evil", "testnet", "mainnet")).toBe("./?network=testnet");
-  });
 });
 
 describe("several vaults on one network", () => {

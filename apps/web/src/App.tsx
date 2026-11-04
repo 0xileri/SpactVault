@@ -1,8 +1,9 @@
-import { ArrowUpRight, CaretDown, GithubLogo } from "@phosphor-icons/react";
+import { ArrowRight, ArrowUpRight } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { accountId as accountIdSchema, viewAccessKeyList, viewAccount } from "@spact/shared";
 
+import { AccountLink } from "./components/AccountLink.js";
 import { ApprovalPage } from "./components/ApprovalPage.js";
 import { Logo, MarkTile } from "./components/Brand.js";
 import { CrossChainPage } from "./components/CrossChainPage.js";
@@ -13,10 +14,10 @@ import { Manage } from "./components/owner/Manage.js";
 import { NewVault } from "./components/owner/NewVault.js";
 import { SecurityLab } from "./components/SecurityLab.js";
 import { Badge, Button, Mono, Notice } from "./components/ui.js";
-import { networksOf, type AppConfig, type NetworkId, type SiteConfig } from "./config.js";
+import { type AppConfig, type NetworkId, type SiteConfig } from "./config.js";
 import { buildForCodeHash, lockProblem, type VaultBuild } from "./contracts.js";
 import { errorMessage } from "./format.js";
-import { LinkContext, NETWORK_LABEL, placeLink, placeOf, switchHref, useLink } from "./network.js";
+import { LinkContext, NETWORK_LABEL, placeLink, placeOf, useLink } from "./network.js";
 import { createSigner } from "./signers/index.js";
 import { useSigner } from "./useSigner.js";
 
@@ -59,17 +60,22 @@ function FooterLink({ href, children, external = false }: { href: string; childr
 function SiteFooter({ config }: { config: SiteConfig }) {
   const link = useLink();
   return (
-    <footer className="mt-24 border-t border-line">
+    <footer className="border-t border-line">
       <div className="mx-auto flex max-w-6xl flex-wrap items-start justify-between gap-8 px-6 py-12 text-sm">
         <div className="max-w-xs">
           <Logo />
           <p className="mt-3 text-zinc-600">Autonomous spending. Human rules. A budget for your AI agent, enforced on NEAR.</p>
         </div>
         <nav aria-label="Footer" className="flex flex-wrap gap-x-8 gap-y-3">
-          <FooterLink href={link("?page=overview")}>Dashboard</FooterLink>
-          {config.vaultId !== null ? <FooterLink href={link("?page=manage")}>Manage</FooterLink> : null}
-          {config.vaultId !== null ? <FooterLink href={link("?page=new-vault")}>Create a vault</FooterLink> : null}
-          <FooterLink href={link("?page=security")}>Security Lab</FooterLink>
+          {config.vaultId !== null ? (
+            <>
+              <FooterLink href={link("?page=new-vault")}>Create a vault</FooterLink>
+              <FooterLink href={link("?page=overview")}>Dashboard</FooterLink>
+              <FooterLink href={link("?page=crosschain")}>Cross-chain</FooterLink>
+              <FooterLink href={link("?page=manage")}>Manage</FooterLink>
+            </>
+          ) : null}
+          <FooterLink href={link("?page=security")}>Security Lab: how it was tested</FooterLink>
           {config.repoUrl ? (
             <FooterLink href={config.repoUrl} external>
               Source code
@@ -84,30 +90,6 @@ function SiteFooter({ config }: { config: SiteConfig }) {
         your wallet signs, and the vault contract enforces the rules.
       </p>
     </footer>
-  );
-}
-
-/** Moves the whole site to another network: a fresh page load, so no state from the old one carries over. */
-function NetworkSwitch({ current, networks }: { current: NetworkId; networks: NetworkId[] }) {
-  const [main] = networks;
-  return (
-    <label className="relative flex items-center">
-      <span className="sr-only">Network</span>
-      <span aria-hidden="true" className={`pointer-events-none absolute left-2 h-2 w-2 rounded-full ${current === "mainnet" ? "bg-brand" : "bg-zinc-400"}`} />
-      <select
-        value={current}
-        onChange={(e) => main && window.location.assign(switchHref(window.location.search, e.target.value as NetworkId, main))}
-        className="cursor-pointer appearance-none rounded-full border border-line bg-surface py-1 pr-6 pl-5 text-sm font-medium text-ink transition-colors duration-300 ease-fluid hover:border-zinc-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-        data-testid="network-switch"
-      >
-        {networks.map((n) => (
-          <option key={n} value={n}>
-            {NETWORK_LABEL[n]}
-          </option>
-        ))}
-      </select>
-      <CaretDown size={12} weight="bold" aria-hidden="true" className="pointer-events-none absolute right-2 text-zinc-500" />
-    </label>
   );
 }
 
@@ -218,7 +200,6 @@ function useUnlistedVault(config: SiteConfig, vaultId: string | null): UnlistedC
 }
 
 export function App({ config: chosen, configs = [chosen] }: { config: SiteConfig; configs?: SiteConfig[] }) {
-  const networks = networksOf(configs);
   const params = new URLSearchParams(window.location.search);
   const requestId = params.get("request");
   const linkVault = params.get("vault");
@@ -325,29 +306,33 @@ export function App({ config: chosen, configs = [chosen] }: { config: SiteConfig
                 <Logo />
               </span>
             </a>
-            <a href={link("?page=overview")} className={navClass(onDashboard)} aria-current={onDashboard ? "page" : undefined}>
-              Dashboard
-            </a>
-            <a href={link("?page=security")} className={navClass(onSecurityLab)} aria-current={onSecurityLab ? "page" : undefined}>
-              <span className="sm:hidden">Security</span>
-              <span className="hidden sm:inline">Security Lab</span>
-            </a>
-            {config.repoUrl ? (
-              <a
-                href={config.repoUrl}
-                target="_blank"
-                rel="noreferrer noopener"
-                aria-label="GitHub repository"
-                className="hidden h-8 w-8 items-center justify-center rounded-full text-zinc-600 sm:flex transition-colors duration-300 ease-fluid hover:bg-zinc-100 hover:text-ink"
-              >
-                <GithubLogo size={18} aria-hidden="true" />
-              </a>
+            {config.vaultId !== null ? (
+              <>
+                <a href={link("?page=overview")} className={navClass(onDashboard)} aria-current={onDashboard ? "page" : undefined}>
+                  Dashboard
+                </a>
+                <a href={link("?page=crosschain")} className={navClass(onCrossChain)} aria-current={onCrossChain ? "page" : undefined}>
+                  Cross-chain
+                </a>
+                <a href={link("?page=manage")} className={`hidden sm:inline ${navClass(onManage)}`} aria-current={onManage ? "page" : undefined}>
+                  Manage
+                </a>
+                <a
+                  href={link("?page=new-vault")}
+                  aria-current={onNewVault ? "page" : undefined}
+                  className="group ml-1 inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1.5 font-semibold text-white shadow-md shadow-brand/30 transition duration-300 ease-fluid hover:bg-brand-strong sm:px-4"
+                  data-testid="nav-create"
+                >
+                  <span className="sm:hidden">Create</span>
+                  <span className="hidden sm:inline">Create your vault</span>
+                  <ArrowRight size={14} weight="bold" aria-hidden="true" className="hidden transition-transform duration-300 ease-fluid group-hover:translate-x-0.5 sm:inline" />
+                </a>
+              </>
             ) : null}
-            {networks.length > 1 ? <NetworkSwitch current={config.network} networks={networks} /> : null}
           </nav>
         </header>
 
-        <main id="main" tabIndex={-1} className="flex-1 focus:outline-none">
+        <main id="main" tabIndex={-1} className={`flex-1 focus:outline-none ${landing ? "-mt-20" : "pb-24"}`}>
           {wallet.error ? (
             <div className="mx-auto mt-6 max-w-5xl px-6">
               <Notice tone="bad" title="Wallet error">
@@ -371,7 +356,7 @@ export function App({ config: chosen, configs = [chosen] }: { config: SiteConfig
                           <VaultPicker configs={configs} current={config} />
                         ) : (
                           <span className="inline-flex flex-wrap items-center gap-1">
-                            vault <Mono>{config.vaultId}</Mono>
+                            vault <AccountLink config={config} account={config.vaultId} testId="vault-explorer" />
                             {config.vaultLabel ? <span>({config.vaultLabel})</span> : null}
                           </span>
                         )}

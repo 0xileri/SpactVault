@@ -25,7 +25,10 @@ test("the published site works under its subpath with no vault: the Security Lab
   await expect(page.getByTestId("connect")).toHaveCount(0);
   // without a vault the outcomes are described in words, and the Security Lab numbers come from the report
   await expect(page.getByTestId("rule-paid")).toHaveText("Small payments, up to your instant limit");
-  await expect(page.getByTestId("hero-proof")).toContainText("2 attacks tested automatically on every code change.");
+  await expect(page.getByTestId("lab-proof")).toContainText("2 attacks tested on every code change.");
+  // with no vault there is nothing to create or manage: the nav holds only the logo, and no Create button shows
+  await expect(page.getByTestId("nav-create")).toHaveCount(0);
+  await expect(page.getByTestId("create-vault-cta")).toHaveCount(0);
   await expect(page.getByTestId("feed-source")).toHaveText("Example amounts and limits. Every owner picks their own.");
   await expect(page.getByRole("link", { name: "Source code" })).toHaveAttribute("href", "https://example.test/repo");
 
@@ -35,8 +38,7 @@ test("the published site works under its subpath with no vault: the Security Lab
   expect((await page.request.get(`${PAGES}og-image.png`)).status()).toBe(200);
   expect((await page.request.get(`${PAGES}favicon.svg`)).status()).toBe(200);
 
-  await page.getByRole("navigation", { name: "Pages" }).getByRole("link", { name: "Dashboard" }).click();
-  await expect(page).toHaveURL(`${PAGES}?page=overview`);
+  await page.goto(`${PAGES}?page=overview`);
   await expect(page.getByText("No vault is connected to this site yet")).toBeVisible();
   await expect(page.getByTestId("environment")).toHaveText("No vault connected");
 

@@ -24,14 +24,19 @@ test("the landing page explains itself in plain words, states the vault's own li
   await expect(feed).toContainText(`Over your ${tusd(policy.hard_tx_limit)} limit per payment`);
   await expect(page.getByTestId("feed-source")).toHaveText("Example amounts, using this vault's real limits.");
 
-  // the main button leads to the three steps
-  await page.getByRole("link", { name: "See how it works" }).click();
-  await expect(page).toHaveURL(/#how$/);
-  await expect(page.getByTestId("steps").getByRole("listitem")).toHaveCount(3);
-  await expect(page.getByRole("heading", { name: "Your agent asks. The vault decides." })).toBeInViewport();
+  // one main action, in the first screen: Create your vault (ADR-037)
+  const cta = page.getByTestId("create-vault-cta").first();
+  await expect(cta).toBeInViewport();
+  await expect(cta).toHaveText("Create your vault");
+  await expect(cta).toHaveAttribute("href", "?page=new-vault");
+  // the nav has the same button, and no Security Lab or network switch
+  const nav = page.getByRole("navigation", { name: "Pages", exact: true });
+  await expect(nav.getByTestId("nav-create")).toHaveAttribute("href", "?page=new-vault");
+  await expect(nav.getByRole("link", { name: /Security Lab/ })).toHaveCount(0);
+  await expect(page.getByTestId("network-switch")).toHaveCount(0);
 
-  // the three outcomes, in this vault's numbers as read from its policy
-  await expect(page.getByRole("heading", { name: "This vault's rules" })).toBeVisible();
+  // the three answers, in this vault's numbers as read from its policy
+  await expect(page.getByRole("heading", { name: "Every payment gets one of three answers" })).toBeVisible();
   await expect(page.getByTestId("rule-paid")).toHaveText(`Up to ${tusd(policy.auto_limit)}`);
   await expect(page.getByTestId("rule-waits")).toHaveText(`Over ${tusd(policy.auto_limit)}, up to ${tusd(policy.hard_tx_limit)}`);
   await expect(page.getByTestId("rule-blocked")).toHaveText(
@@ -41,8 +46,19 @@ test("the landing page explains itself in plain words, states the vault's own li
   // live numbers match the chain
   await expect(page.getByTestId("live-balance")).toHaveText(tusd(vaultBalance));
   await expect(page.getByTestId("live-spent")).toContainText(`of ${tusd(budget.daily_limit)}`);
+  // the cross-chain route has its own section, linking to its page
+  await expect(page.getByRole("heading", { name: "Pay on other chains, with the same rules" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "See a cross-chain price" })).toHaveAttribute("href", "?page=crosschain");
+  // the last band repeats the action, with the three steps and the one Security Lab proof link
+  await expect(page.getByTestId("start-steps").getByRole("listitem")).toHaveCount(3);
   // passed on chain plus passed in unit tests only; the case that is not covered is not counted
-  await expect(page.getByTestId("hero-proof")).toContainText("2 attacks tested automatically on every code change.");
+  await expect(page.getByTestId("lab-proof")).toContainText("2 attacks tested on every code change.");
+  await expect(page.getByTestId("lab-proof").getByRole("link", { name: "See the Security Lab" })).toHaveAttribute("href", "?page=security");
+
+  await cta.click();
+  await expect(page).toHaveURL(/\?page=new-vault$/);
+  await expect(page.getByRole("heading", { name: "Create a vault" })).toBeVisible();
+  await page.goBack();
 
   await page.getByRole("link", { name: "Open the dashboard" }).first().click();
   await expect(page).toHaveURL(/\?page=overview$/);
@@ -89,9 +105,9 @@ test("the hero plays its three requests in turn, and stops while off screen", as
   expect(await outcomesAt(page, 9_500)).toEqual({ paid: 1, approve: 0, approved: 1, refused: 1, third: 1 });
 
   // below the fold, sections wait for the reader, then fade in
-  const firstStep = page.getByTestId("steps").locator(".reveal").first();
+  const firstStep = page.getByTestId("start-steps").locator(".reveal").first();
   await expect(firstStep).toHaveAttribute("data-shown", "false");
-  await page.getByTestId("steps").scrollIntoViewIfNeeded();
+  await page.getByTestId("start-steps").scrollIntoViewIfNeeded();
   await expect(firstStep).toHaveAttribute("data-shown", "true");
 
   await page.getByRole("contentinfo").scrollIntoViewIfNeeded();
@@ -119,4 +135,6 @@ test("with reduced motion the hero is one still frame of all three outcomes and 
   ).toEqual(["1", "1", "0", "1", "0", "0", "0"]);
   await expect(page.locator(".reveal").first()).toHaveAttribute("data-shown", "true");
   await expect(page.locator('.reveal[data-shown="false"]')).toHaveCount(0);
+  // nothing on the page moves: no drifting lights, no rising hero, no turning rings
+  expect(await page.evaluate(() => document.getAnimations().filter((a) => a.playState === "running").length)).toBe(0);
 });
