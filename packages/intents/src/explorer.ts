@@ -17,6 +17,27 @@ const EXPLORERS: Record<string, { url: string; hash: RegExp; name: string }> = {
   op: { url: "https://optimistic.etherscan.io/tx/{hash}", hash: EVM_TX, name: "Optimism" },
 };
 
+const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+const BASE58_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+/** Where an address on a destination chain can be looked up; built here, like the transaction links. */
+const ADDRESS_EXPLORERS: Record<string, { url: string; address: RegExp }> = {
+  sol: { url: "https://solscan.io/account/{address}", address: BASE58_ADDRESS },
+  base: { url: "https://basescan.org/address/{address}", address: EVM_ADDRESS },
+  eth: { url: "https://etherscan.io/address/{address}", address: EVM_ADDRESS },
+  arb: { url: "https://arbiscan.io/address/{address}", address: EVM_ADDRESS },
+  pol: { url: "https://polygonscan.com/address/{address}", address: EVM_ADDRESS },
+  bsc: { url: "https://bscscan.com/address/{address}", address: EVM_ADDRESS },
+  op: { url: "https://optimistic.etherscan.io/address/{address}", address: EVM_ADDRESS },
+};
+
+/** A link to `address` on `chain`'s explorer, or null for an unknown chain or an address in the wrong format. */
+export function addressExplorerLink(chain: string, address: string): string | null {
+  const e = ADDRESS_EXPLORERS[chain];
+  if (!e || !e.address.test(address)) return null;
+  return e.url.replace("{address}", address);
+}
+
 /** "Solana" for `sol`; the 1Click chain name itself when this table does not know it. */
 export function chainName(chain: string): string {
   return EXPLORERS[chain]?.name ?? chain;

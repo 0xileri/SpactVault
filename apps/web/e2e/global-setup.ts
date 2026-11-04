@@ -117,6 +117,10 @@ export default async function globalSetup() {
     // the mock signs its answers with the published sandbox-only key; config.ts refuses it elsewhere
     VITE_ONECLICK_SIGNER_KEY: MOCK_SIGNER_PUBLIC_KEY,
     SPACT_MOCK_ONECLICK: oneClick.url,
+    // a stand-in explorer, written as plain base URLs (the form the Railway settings use), so links.spec.ts
+    // can check that every account and transaction hash on the site links to it; nothing ever loads it
+    VITE_EXPLORER_TX_URL: "https://explorer.test/txns/",
+    VITE_EXPLORER_ACCOUNT_URL: "https://explorer.test/address/",
     // a second network for the network switch; network.spec.ts keeps its hosts offline
     VITE_TESTNET_VAULT_ID: "vault.e2e.testnet",
     VITE_TESTNET_RPC_URL: "https://testnet-rpc.invalid",

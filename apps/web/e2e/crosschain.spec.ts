@@ -113,7 +113,11 @@ test("an unregistered deposit address must be registered with the token before a
   await openAndConnect(page);
   await expect(page.getByTestId("problems")).toContainText("not registered with the token yet");
   await expect(page.getByTestId("approve")).toBeDisabled();
+  // registering is step 1 of 2, said in so many words, so it is not mistaken for the approval (mainnet run, 2026-11-04)
+  await expect(page.getByTestId("register-deposit")).toHaveText("Step 1: register it");
   await page.getByTestId("register-deposit").click();
+  await expect(page.getByText("Step 1 of 2: register the deposit address with the token")).toBeVisible();
+  await expect(page.getByTestId("review-changes")).toContainText("This is not the approval.");
   await expect(page.getByTestId("review-actions")).toContainText(`Call storage_deposit on ${f.token_id}`);
   await expect(page.getByTestId("review-json")).toContainText(f.deposit_id);
 });

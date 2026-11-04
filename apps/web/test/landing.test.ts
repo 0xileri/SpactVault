@@ -78,8 +78,10 @@ describe("liveCounts", () => {
       request("c", "AWAITING_APPROVAL", 999n), // lapsed: past its expiry by chain time
       request("d", "SETTLED"),
       request("e", "DENIED"),
+      // sent to 1Click: paid as far as the vault goes, like the mainnet run's xc-mainnet-1
+      request("f", "CROSS_CHAIN_PENDING"),
     ];
-    expect(liveCounts(requests, now, 7)).toEqual({ paid: 2, waiting: 1, read: 5, stored: 7 });
+    expect(liveCounts(requests, now, 7)).toEqual({ paid: 3, waiting: 1, read: 6, stored: 7 });
   });
 });
 

@@ -37,6 +37,7 @@ import type { OwnerSigner } from "../../signers/index.js";
 import type { SignerState } from "../../useSigner.js";
 import { Badge, Button, Card, Mono, Notice } from "../ui.js";
 import { RulesEditor } from "./RulesEditor.js";
+import { AccountLink } from "../AccountLink.js";
 import { MainnetConfirm, SignReview, TextField, TxLink } from "./SignReview.js";
 
 type Open = null | "fund" | "near" | "withdraw" | "pause" | "add-agent" | { remove: string } | "agent-key" | "rules";
@@ -257,7 +258,7 @@ export function Manage({ config, signer, wallet }: Props) {
             {vault.agents.length === 0 ? <li className="text-zinc-600">No agents. Nobody can ask this vault to pay.</li> : null}
             {vault.agents.map((a) => (
               <li key={a} className="flex flex-wrap items-center justify-between gap-2">
-                <Mono>{a}</Mono>
+                <AccountLink config={config} account={a} />
                 <Button variant="danger" onClick={() => reopen({ remove: a })} disabled={!isOwner} testId={`remove-agent-${a}`}>
                   Remove
                 </Button>

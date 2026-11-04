@@ -12,6 +12,7 @@ import { oneClickFor } from "../oneclick.js";
 import type { Decimals } from "../owner/actions.js";
 import type { OwnerSigner } from "../signers/index.js";
 import type { SignerState } from "../useSigner.js";
+import { DestinationAddress } from "./AccountLink.js";
 import { PolicyReview, withRoute } from "./owner/RulesEditor.js";
 import { splitList, TextField } from "./owner/SignReview.js";
 import { Button, Card, Mono, Notice, StatusBadge } from "./ui.js";
@@ -279,7 +280,8 @@ export function CrossChainPage({ config, signer, wallet }: { config: AppConfig; 
                 <li key={r.request_id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
                   <span>
                     <span className="font-semibold">{formatAmount(r.amount, snap.tokens.find((t) => t.token === r.token)?.metadata ?? null)}</span> to{" "}
-                    <Mono>{r.cross_chain?.destination_recipient}</Mono> on {chainName(r.cross_chain?.destination_chain ?? "")}
+                    {r.cross_chain ? <DestinationAddress chain={r.cross_chain.destination_chain} address={r.cross_chain.destination_recipient} /> : null} on{" "}
+                    {chainName(r.cross_chain?.destination_chain ?? "")}
                     <span className="block text-xs text-zinc-500">
                       <Mono>{r.request_id}</Mono>
                     </span>

@@ -177,6 +177,9 @@ jobs:
           VITE_TESTNET_EXTRA_VAULTS: ${{ vars.VITE_TESTNET_EXTRA_VAULTS }}
           VITE_MAINNET_VAULT_LABEL: ${{ vars.VITE_MAINNET_VAULT_LABEL }}
           VITE_MAINNET_EXTRA_VAULTS: ${{ vars.VITE_MAINNET_EXTRA_VAULTS }}
+          # empty means the network's default explorer (nearblocks on testnet and mainnet)
+          VITE_EXPLORER_TX_URL: ${{ vars.VITE_EXPLORER_TX_URL }}
+          VITE_EXPLORER_ACCOUNT_URL: ${{ vars.VITE_EXPLORER_ACCOUNT_URL }}
           # GitHub Pages cannot proxy 1Click; set this only to a 1Click URL that allows the Pages origin
           VITE_ONECLICK_URL: ${{ vars.VITE_ONECLICK_URL }}
           # absolute URLs for the share card, and the landing page's source link

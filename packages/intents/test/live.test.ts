@@ -4,6 +4,7 @@ import { CHAIN_RE, EXTERNAL_ID_RE, type PaymentRequest } from "@spact/shared";
 import { describe, expect, it } from "vitest";
 
 import {
+  addressExplorerLink,
   buildQuoteRequest,
   chainName,
   crossChainArgs,
@@ -282,7 +283,11 @@ describe("the first real deposit: 1Click's SUCCESS record for the mainnet run (r
     expect(r).toMatchObject({ providerStatus: "SUCCESS", outcome: "reported_delivered", providerFinal: true, restoresBudget: false, reportedRefund: "0" });
     const destination = statusResponseSchema.parse(statusSuccess.body).swapDetails?.destinationChainTxHashes?.map((t) => t.hash);
     expect(destination).toEqual([S.base_tx]);
-    // the page builds its own explorer link for the Base transaction
+    // the page builds its own explorer links for the Base transaction and the Base recipient
     expect(txExplorerLink("base", S.base_tx)).toBe(`https://basescan.org/tx/${S.base_tx}`);
+    expect(addressExplorerLink("base", quoteDryBase.BASE_RECIPIENT)).toBe(`https://basescan.org/address/${quoteDryBase.BASE_RECIPIENT}`);
+    expect(addressExplorerLink("base", "0x123")).toBeNull();
+    expect(addressExplorerLink("sol", LIVE.recipient)).toBe(`https://solscan.io/account/${LIVE.recipient}`);
+    expect(addressExplorerLink("aptos", quoteDryBase.BASE_RECIPIENT)).toBeNull();
   });
 });
