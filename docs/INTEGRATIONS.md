@@ -221,7 +221,7 @@ What the answers changed in the code: null-tolerant status fields, the earlier o
 
 | Integration | Status | Notes |
 |---|---|---|
-| NEAR Intents / 1Click | adapter, vault route, MCP tool and website pages built and tested locally (P1, ADR-032, ADR-033); live quote and status answers recorded and tested (ADR-034); **no live payment yet** | see "NEAR Intents / 1Click" above |
+| NEAR Intents / 1Click | adapter, vault route, MCP tool and website pages built and tested locally (P1, ADR-032, ADR-033); live quote and status answers recorded and tested (ADR-034); **first live payment on mainnet on 2026-11-04** (1 USDC to Base, 1Click `SUCCESS`; STATUS "Mainnet cross-chain run") | see "NEAR Intents / 1Click" above |
 | Telegram Bot API | not started | |
 
 ## Hackathon submission (from `HACKATHON.md`, owner copy of 2026-10-23)
