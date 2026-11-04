@@ -349,7 +349,7 @@ The build environment still cannot reach `1click.chaindefuser.com` or `docs.near
 
 The key is fixed in code. If 1Click rotates it, these checks fail closed until the key is updated from the SDK. On a local sandbox only, `VITE_ONECLICK_SIGNER_KEY` lets the mock 1Click sign its own answers with a published test key (`MOCK_SIGNER_SEED`), and `config.ts` refuses it on testnet and mainnet.
 
-**Still not recorded:** 1Click's token list. The owner's `tokens.json` (53 KB) was not attached, so the route tests use two token entries written by hand and say so; only the USDC-on-Solana asset id is confirmed from it. Since one entry the schema refuses (a long symbol, an unusual chain name) would have hidden every route, the list parser now keeps the entries that parse and drops the rest. **Still never seen live:** a deposit, a status after one, `SUCCESS`, `REFUNDED`, and destination-chain tx hashes.
+**Recorded on 2026-11-04** (STATUS "Mainnet cross-chain run"): the full token list (215 entries, all parse), a dry quote to Base, and the `SUCCESS` status after the first real deposit. Before that, **still not recorded:** 1Click's token list. The owner's `tokens.json` (53 KB) was not attached, so the route tests use two token entries written by hand and say so; only the USDC-on-Solana asset id is confirmed from it. Since one entry the schema refuses (a long symbol, an unusual chain name) would have hidden every route, the list parser now keeps the entries that parse and drops the rest. **Still never seen live:** a deposit, a status after one, `SUCCESS`, `REFUNDED`, and destination-chain tx hashes.
 
 ## ADR-035: Vault and agent setup any NEAR wallet can sign (2026-11-03)
 
@@ -364,7 +364,7 @@ On the first mainnet try, Meteor refused step 1 of creating `vault2.0xileri.near
 |---|---|---|---|
 | New vault, named | `CreateAccount, Transfer, DeployContract (274 kB), AddKey(function call: new)` | a contract deploy in a dApp transaction; a function-call key on a new account | nothing is sent; choose **Any wallet** |
 | New vault, any wallet | `Transfer` to a 64-hex account | a plain NEAR transfer | (every NEAR wallet signs a transfer) |
-| Agent key, named | `CreateAccount, Transfer, AddKey(function call: 3 methods)` | a function-call key on a new account | nothing is sent; choose **Any wallet** |
+| Agent key, named | `CreateAccount, Transfer, AddKey(function call: 3 methods)` | a function-call key on a new account (**Meteor signs it**, 2026-11-04) | nothing is sent; choose **Any wallet** |
 | Agent key, any wallet | `Transfer` to a 64-hex account, then `add_agent` | a plain NEAR transfer; a 1 yoctoNEAR call | (every NEAR wallet signs both) |
 | Fund, rules, pause, agents, approve | function calls with 1 yoctoNEAR (ADR-002) | a deposit-carrying call | no browser-only workaround: these must come from the owner's full-access key |
 
@@ -402,7 +402,7 @@ The owner asked for a simpler site where the main purpose is a legible action as
 - [ ] Reconciliation for a stuck TRANSFER_PENDING (callback out of gas).
 - [ ] Storage pruning for terminal requests.
 - [x] 1Click quote authenticity (P1): checked against 1Click's manager key from its SDK, on both recorded live quotes (ADR-034). The route stays owner-approved: a signature proves 1Click issued the quote, not that it will honour it.
-- [ ] 1Click deposit semantics for a NEAR-origin quote: that a plain `ft_transfer` to `depositAddress` is what 1Click detects. Consistent with the docs, not confirmed by them; the first real deposit settles it (ADR-033). Storage registration: the approval page checks it and offers a `storage_deposit`.
+- [x] 1Click deposit semantics for a NEAR-origin quote: a plain `ft_transfer` to `depositAddress` is what 1Click detects, confirmed by the first real deposit on 2026-11-04 (STATUS "Mainnet cross-chain run": 1Click `SUCCESS`, origin transaction `H6AjpNU5…`). The deposit address needed a `storage_deposit` first. Before the run: Consistent with the docs, not confirmed by them; the first real deposit settles it (ADR-033). Storage registration: the approval page checks it and offers a `storage_deposit`.
 - [x] `GET /v0/status` answers for a deposit address before anything is deposited: HTTP 200 PENDING_DEPOSIT with the signed quote (recorded 2026-11-03, ADR-034).
 - [x] Telegram chat binding flow: one-time code on the operator's terminal (ADR-020). Open: a wallet-signed binding.
 - [x] Hosting: GitHub Pages from main, with the CI-built report (ADR-023), and Railway with real security headers (ADR-025). Open: a Content-Security-Policy.

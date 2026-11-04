@@ -29,7 +29,7 @@ Last updated 2026-11-03 (UTC). Network mode: **NEAR mainnet** since 2026-11-01, 
 
 ## P1: NEAR Intents 1Click route (2026-11-02)
 
-DECISIONS ADR-032. **Local tested only:** a sandbox vault, a sandbox account standing in for a 1Click deposit address, and `MockOneClick` answers shaped by the official SDK's types. On 2026-11-03 the owner called the live 1Click API from their own machine (quotes and a status read, ADR-034), and those answers are now test fixtures. Nothing was deployed to testnet or mainnet, nothing was deposited and no funds moved. The deployed vaults run the earlier code and have no cross-chain route.
+DECISIONS ADR-032. **Run on mainnet once, on 2026-11-04** (1 USDC to Base, `SUCCESS`; "Mainnet cross-chain run" below). Before that, **local tested only:** a sandbox vault, a sandbox account standing in for a 1Click deposit address, and `MockOneClick` answers shaped by the official SDK's types. On 2026-11-03 the owner called the live 1Click API from their own machine (quotes and a status read, ADR-034), and those answers are now test fixtures. Nothing was deployed to testnet or mainnet, nothing was deposited and no funds moved. The deployed vaults run the earlier code and have no cross-chain route.
 
 | AGENTS.md P1 item | State |
 |---|---|
@@ -46,10 +46,8 @@ DECISIONS ADR-032. **Local tested only:** a sandbox vault, a sandbox account sta
   - T13: a 1Click refund report never restores budget, and tokens sent back to the vault do not either (sandbox);
   - T14: the review page shows the deposit address and the final payee apart; a swapped deposit address or payee fails the hash check or the vault (browser, sandbox and unit tests);
   - both are mapped in `packages/security-lab/src/catalog.ts`, and `scripts/security-report.sh` runs the new `vitest:intents` suite.
-- **Unverified:**
-  - the NEAR-origin deposit mechanics (plain `ft_transfer`; storage registration of the deposit account, which the approval page now checks and offers);
-  - the live API's answers after a deposit (`SUCCESS`, `REFUNDED`, destination tx hashes); before a deposit they are recorded (ADR-034);
-  - 1Click's token list (not recorded yet).
+- **Settled on mainnet on 2026-11-04** ("Mainnet cross-chain run" below): a plain `ft_transfer` is the deposit 1Click detects; the deposit account needed a `storage_deposit` first, which the approval page offered; a `SUCCESS` status with destination tx hashes, and the full token list, are recorded as fixtures.
+- **Still unverified:** a `REFUNDED` or `FAILED` status live.
   - INTEGRATIONS.md has the sources.
 
 ### Live 1Click answers (2026-11-03)
@@ -57,18 +55,18 @@ DECISIONS ADR-032. **Local tested only:** a sandbox vault, a sandbox account sta
 DECISIONS ADR-034. Recorded by the owner with curl from their own machine (this environment cannot reach the host), no API key, nothing deposited. Fixtures: `packages/intents/test/fixtures/live`.
 
 - **Does `/v0/status` answer for an unused deposit address?** Yes: HTTP 200 `PENDING_DEPOSIT`, with 1Click's full, signed record of the quote. The approval page's check works on it (web and intents tests on the recorded answer).
-- **Is a plain `ft_transfer` the deposit 1Click detects?** Not confirmed. The docs say to transfer the tokens to the deposit address, without naming the NEAR call, and the deposit address is a contract-less implicit account, where only a plain `ft_transfer` can land. The first real deposit, in the mainnet run, settles it (ADR-033 has the citations).
+- **Is a plain `ft_transfer` the deposit 1Click detects?** Yes, confirmed by the first real deposit on 2026-11-04 ("Mainnet cross-chain run" below). Before that: not confirmed. The docs say to transfer the tokens to the deposit address, without naming the NEAR call, and the deposit address is a contract-less implicit account, where only a plain `ft_transfer` can land. The first real deposit, in the mainnet run, settles it (ADR-033 has the citations).
 - **Bugs the live answers exposed, now fixed:**
   - real status answers did not parse (null fields), which would have blocked every cross-chain approval;
   - the vault request was bound to the quote's deadline, three days after the one asked for, instead of the earlier one.
 - **New, and checked:**
   - 1Click's ed25519 signature on a quote verifies with the manager key from its SDK;
   - the MCP tool, the approval page and the cross-chain page now refuse an unsigned or altered quote.
-- **Not recorded:** the token list, and anything after a real deposit.
+- **Recorded since (2026-11-04):** the full token list, a dry quote to Base, and a `SUCCESS` status after a real deposit ("Mainnet cross-chain run").
 
 ## Owner flows on the website (2026-11-03)
 
-DECISIONS ADR-033. Everything the owner does now runs on the website with a browser wallet, each step shown on a review screen first, with a confirmation box on mainnet. **Tested on a local chain only**, with the sandbox dev signer standing in for the wallet; not yet run with Meteor on testnet or mainnet. 1Click's live answers are recorded (ADR-034), but the site's own `/1click` proxy has not called it yet.
+DECISIONS ADR-033. Everything the owner does now runs on the website with a browser wallet, each step shown on a review screen first, with a confirmation box on mainnet. Tested on a local chain with the sandbox dev signer, and **run with Meteor on mainnet on 2026-11-04** ("Mainnet cross-chain run" below): an any-wallet vault, funding, a named agent key, a rules change and a cross-chain approval. Meteor refuses the named-vault way. 1Click's live answers are recorded (ADR-034), but the site's own `/1click` proxy has not called it yet.
 
 | Flow | Where | State |
 |---|---|---|
@@ -87,6 +85,55 @@ DECISIONS ADR-033. Everything the owner does now runs on the website with a brow
 | MCP `request_cross_chain_payment` and 1Click status in `get_payment_status` | `apps/mcp` | unit tests with `MockOneClick` |
 
 **Wallet limits** (ADR-033, ADR-035, ADR-036): Meteor refuses a full-access `AddKey` for a website (owner's screenshot, 2026-11-03) and a `DeployContract` (2026-11-04), so with Meteor a vault is made the any-wallet way, now the default; a named vault sends the wasm through the wallet, an any-wallet vault or agent asks the wallet for a plain transfer only; `new` cannot be signed by a wallet, so the tab's setup key does it; every owner change is a separate wallet confirmation; key-file downloads may not work in a wallet's in-app browser. Unverified: that Meteor signs a named vault's 274 kB deploy and a function-call `AddKey` for a website (if not, **Any wallet** needs only a transfer), that the mainnet RPC accepts the ~370 kB any-wallet install transaction, and the other transaction shapes. ADR-035 has a table of what each step asks the wallet to allow.
+
+## Mainnet cross-chain run (2026-11-04)
+
+The first real cross-chain payment from a SpactVault vault, end to end on NEAR mainnet with real USDC. The owner did every wallet step on https://spactvault.xyz with Meteor Wallet. The agent was Claude Code on the owner's machine, calling the repo's MCP server, which signed with the agent's function-call key. Nothing was simulated or mocked. The build environment cannot reach mainnet, 1Click or the explorers, so every value below comes from the owner's RPC calls, curl output, MCP tool results and screenshots, pasted into the session.
+
+**What happened, in one line:** the agent asked for 1 USDC to the owner's Base address. The vault held it. The owner approved it in Meteor. The vault paid 1Click's deposit address once with a plain `ft_transfer`. 1Click delivered **0.997398 USDC on Base 38 seconds later**, exactly its quoted amount, and reports `SUCCESS`.
+
+| | Account | Explorer |
+|---|---|---|
+| Vault (P1 build, created from the website the any-wallet way, ADR-035/036) | `9dc744e29f8a079c6888dbdaafa8fb618b08c3734d00f4f25c8b31050ea086c9` | [nearblocks](https://nearblocks.io/address/9dc744e29f8a079c6888dbdaafa8fb618b08c3734d00f4f25c8b31050ea086c9) |
+| Owner (Meteor Wallet) | `0xileri.near` | [nearblocks](https://nearblocks.io/address/0xileri.near) |
+| Agent (only key: function-call, three vault methods) | `agent2.0xileri.near` | [nearblocks](https://nearblocks.io/address/agent2.0xileri.near) |
+| Token: native USDC on NEAR | `17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1` | [nearblocks](https://nearblocks.io/address/17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1) |
+| 1Click deposit address (issued for this quote) | `afaef9616107eb4b0bee5f666b5cbd3f05517f24fbb5034b0f3add6f89c886b0` | [nearblocks](https://nearblocks.io/address/afaef9616107eb4b0bee5f666b5cbd3f05517f24fbb5034b0f3add6f89c886b0) |
+| Final recipient on Base (the owner's address) | `0xdF8ec3262A4ED45fa024805B2305F0e5FE73b938` | [basescan](https://basescan.org/address/0xdF8ec3262A4ED45fa024805B2305F0e5FE73b938) |
+
+**Checked on chain before funding** (owner's RPC calls, block 223005530): code hash `5HwAUrjKbx5qc7NNyka4ndkAsXUdA9CsQ1ya66zzNNve` (the published P1 build), `view_access_key_list` empty, `get_config` owner `0xileri.near`, network `mainnet`, agents `[agent2.0xileri.near]`, policy 1 / 3 / 5 USDC with no recipients and no cross-chain routes. The agent's key list (block 223015078) holds exactly one key, `ed25519:8d5EgMu5Eeb9Le3iuEF2ikucsuQv2uGk74gzu2PTg3g5`: `FunctionCall`, receiver the vault, methods `request_direct_payment`, `request_cross_chain_payment`, `execute_request`, allowance 0.25 NEAR.
+
+| Time (UTC) | Step | Signed by | Transaction |
+|---|---|---|---|
+| 08:51:21 | Create the vault account: 3.2 NEAR to the implicit id (any-wallet way; Meteor refused the named way, see below) | Meteor (`0xileri.near`) | [`Ag4bxAfC…`](https://nearblocks.io/txns/Ag4bxAfCh7Xy8rpWNdeQjLwwJyb8Q5BjZyXRdio831EB) |
+| 08:51:55 | Install the P1 code, `new`, delete the setup key, in one transaction | the tab's setup key | [`8z8hiDRi…`](https://nearblocks.io/txns/8z8hiDRiXN4pHRoUhtn8drDx14hgjSMnehF8zHKupKNu) |
+| 11:23:12 | Fund: `storage_deposit` for the vault, then `ft_transfer` of 1.2 USDC | Meteor | [`J7MHK4pD…`](https://nearblocks.io/txns/J7MHK4pDkrdeyRZH82iCkASRP5Ybn52sYNiQfaQH1SH5) |
+| 12:12:57 | Create `agent2.0xileri.near` with 0.3 NEAR and its function-call key | Meteor | [`87yu1vbF…`](https://nearblocks.io/txns/87yu1vbFM2JAB7fc3yqLof9JwWWLAuZvrJx79Px6HDHB) |
+| 12:17:21 | `set_policy`: allow USDC on Base to `0xdF8e…b938` (rules version 2) | Meteor | [`HaunTFDn…`](https://nearblocks.io/txns/HaunTFDntVVtCv8ub3CoSJ26TvUNauUk4zgdPFyUfL5t) |
+| 12:38:05 | `request_cross_chain_payment` `xc-mainnet-1`: 1 USDC, AWAITING_APPROVAL | agent (MCP server in Claude Code) | [`EHup5SHo…`](https://nearblocks.io/txns/EHup5SHoUkjPacSVKjNSEukj7oSZJAcpoD2WoY5JWR53) |
+| 12:46:12 | Register the deposit address with USDC (`storage_deposit`), offered by the approval page | Meteor | [`mrmhp3xu…`](https://nearblocks.io/txns/mrmhp3xum4Y9VMzyCjNtPYuw8T5XoD1ouVcr4zqMh7y) |
+| 12:46:31 | `approve_request` + `execute_request`: the vault `ft_transfer`s 1 USDC to the deposit address | Meteor | [`H6AjpNU5…`](https://nearblocks.io/txns/H6AjpNU5m8zdVFqE6TAE5uvQx4SVCT3ToYMBg8sstj8f) |
+| 12:47:11 | 1Click (NEAR Intents treasury `0x2CfF…2680`) sends 0.997398 USDC to `0xdF8e…b938` on Base, block 53503542 | 1Click | [`0x679696f9…`](https://basescan.org/tx/0x679696f968b4083dcbca8556e9f64550788c004f8722cb14ddd38e18551b9b31) |
+
+- **The quote** (filed by the MCP server at 12:38:03): 1 USDC in, 0.997398 USDC out, at least 0.987424, 1 basis point app fee that 1Click adds, quote hash `200659799700d8da9c3a8c71b895776a75cbb2e97db05e0f9420cde6c584edbc`. The vault bound the request to the requested deadline, 14:38:03 (it refuses 60 s before), not the quote's own three days later (ADR-034).
+- **1Click's final status** (`GET /v0/status`, HTTP 200): `SUCCESS`, deposited 1000000, `amountOut` 997398, refunded 0, withdraw fee 2400 (0.0024 USDC), origin transaction `H6AjpNU5…` (the vault's payment), destination transaction `0x679696f9…`. Its copy of the quote carries 1Click's signature, which verifies, and matches the stored request field for field (`packages/intents/test/fixtures/live/status-success.ts`).
+- **The vault's side:** `get_payment_status` reports `CROSS_CHAIN_PENDING` / `EXTERNAL_SETTLEMENT_PENDING`, `approved_by` `0xileri.near`, with 1Click's `SUCCESS` next to it, labelled as 1Click's report. That status is final for the vault by design: it confirms its own payment to the deposit address, not delivery on Base (ADR-032). `ft_balance_of` the vault afterwards: `"200000"` (0.2 USDC of the 1.2 left).
+- **Before the run:** the owner took the P0 vault's 2.5 USDC back with the site's Take money out (`owner_withdraw` on `vault.0xileri.near`, [`gxm1eTEN…`](https://nearblocks.io/txns/gxm1eTENWvyjJmZyte76WFe6txH6o22ZB7DawVDC4aK), 10:25:05 UTC).
+
+**What the run settled:**
+- **A plain `ft_transfer` is the deposit 1Click detects.** The vault paid the deposit address with `ft_transfer` (no `ft_transfer_call`) and 1Click credited it as the deposit (`originChainTxHashes`). This was the last open question about the route (ADR-033).
+- **The deposit address needs registering with USDC first.** It was not registered; the approval page found that with `storage_balance_of` and offered the `storage_deposit`, which the owner signed before approving.
+- **The site's own `/1click` proxy works against the live API:** the Cross-chain page's signed price and the approval page's deposit check both went through it.
+- **Meteor:** it signs plain transfers, function calls with 1 yoctoNEAR, and `CreateAccount + Transfer + AddKey(function call)` for a new sub-account. It refuses a full-access `AddKey` and a `DeployContract` requested by a website, so a named vault (`vault2.0xileri.near`) cannot be made with it, and the vault has a 64-character implicit id (ADR-035, ADR-036).
+
+**What did not go smoothly:**
+- The first "I approved it" did not reach the vault: the first signature on the approval page was the deposit address's registration, and the approval itself is a second signature. The page could say "step 1 of 2" more plainly.
+- The first `claude mcp add` was tied to a different folder than the one Claude Code ran in, so the agent had no `spact` tools. Registering with `--scope user` fixed it.
+- The funding hash first reported from the page (`8ipyTgaB…`) is not in nearblocks' transaction list for `0xileri.near`; the list's funding transaction is `J7MHK4pD…`. Not yet explained; recorded as given.
+
+**What it cost:** 3.2 NEAR now in the vault for good (code storage and request storage; ADR-036), 0.3 NEAR in the agent account for its gas, two USDC registrations (0.00125 NEAR each), and gas. Of the USDC, 1 was paid and 0.997398 arrived; 0.2 stays in the vault and can be taken out.
+
+**Fixtures from this run** (`packages/intents/test/fixtures/live`): the full token list (`tokens.json`, 215 entries, sha256 checked), the dry quote to Base, and 1Click's `SUCCESS` status for this deposit, each with tests.
 
 ## Mainnet deployment (2026-11-01)
 
@@ -292,8 +339,8 @@ Agent key (2026-10-24): the agent now signs with a function-call key that reache
 - No Content-Security-Policy, and framing is refused by script rather than a `frame-ancestors` header, which GitHub Pages cannot send (ADR-023).
 - P1: after the deposit, 1Click is trusted; the vault cannot verify delivery or a refund (ADR-032, THREAT_MODEL).
 - P1: the agent files the quote's deposit address. The approval page now checks it against 1Click's own record (ADR-033), but that check is only as good as 1Click's answer and the site's proxy.
-- Website owner flows: tested on a local chain only; Meteor has not signed a vault creation, a funding, a rules change or an agent key yet. Its first try refused the old full-access key (ADR-035). Between the two vault-creation transactions a setup key sits in the tab, and the site has no Content-Security-Policy (THREAT_MODEL). A named vault keeps one spent function-call key for `new`.
-- P1: NEAR-origin 1Click deposit mechanics are unverified: that 1Click detects a plain `ft_transfer`, and whether the implicit deposit account needs registering with USDC (the approval page offers it). The first real deposit settles both (ADR-033).
+- Website owner flows: run with Meteor on mainnet on 2026-11-04 (vault the any-wallet way, funding, agent key, rules, approval). Other wallets are untested. Its first try refused the old full-access key (ADR-035). Between the two vault-creation transactions a setup key sits in the tab, and the site has no Content-Security-Policy (THREAT_MODEL). A named vault keeps one spent function-call key for `new`.
+- P1: NEAR-origin deposit mechanics, settled by the first real deposit (2026-11-04): 1Click detects a plain `ft_transfer`, and the deposit address did need registering with USDC first (the approval page offered it). Still never seen live: a `REFUNDED` or `FAILED` status.
 - P1: the 1Click manager key is fixed in code (ADR-034). If 1Click rotates it, cross-chain quotes and approvals fail closed until the key is updated from its SDK.
 
 ## Next smallest task
