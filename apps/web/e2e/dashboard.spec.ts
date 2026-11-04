@@ -21,6 +21,9 @@ test("the dashboard shows what is on chain: balance, budget, waiting requests an
   const waiting = page.getByTestId("pending-list");
   await expect(waiting).toContainText("13 TUSD to api.test.near");
   await expect(waiting).toContainText("e2e-dash");
+  // each waiting request is one link to its approval page, with no link nested inside it (invalid HTML)
+  await expect(waiting.locator("a a")).toHaveCount(0);
+  await expect(page.locator("a a")).toHaveCount(0);
 
   const activity = page.getByTestId("activity");
   // each row says what happened and why, in words

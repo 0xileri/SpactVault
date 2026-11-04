@@ -30,9 +30,21 @@ export function DestinationAddress({ chain, address }: { chain: string; address:
   );
 }
 
-/** Who a payment is for: the payee on NEAR, or the final recipient of a 1Click route, each linked. */
-export function Payee({ config, request }: { config: Pick<AppConfig, "explorerAccountUrl">; request: PaymentRequest }) {
+/**
+ * Who a payment is for: the payee on NEAR, or the final recipient of a 1Click route, each linked. `plain` drops the
+ * explorer links, for places that are themselves a link (a link inside a link is invalid HTML).
+ */
+export function Payee({ config, request, plain = false }: { config: Pick<AppConfig, "explorerAccountUrl">; request: PaymentRequest; plain?: boolean }) {
   const t = request.cross_chain;
+  if (plain) {
+    return t ? (
+      <span>
+        <Mono>{t.destination_recipient}</Mono> on {t.destination_chain} via 1Click
+      </span>
+    ) : (
+      <Mono>{request.recipient}</Mono>
+    );
+  }
   return t ? (
     <span>
       <DestinationAddress chain={t.destination_chain} address={t.destination_recipient} /> on {t.destination_chain} via 1Click

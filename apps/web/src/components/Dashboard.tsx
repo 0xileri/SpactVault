@@ -290,7 +290,8 @@ export function Dashboard({ config }: { config: AppConfig }) {
                 >
                   <span className="min-w-0">
                     <span className="block text-base">
-                      <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Payee config={config} request={r} />
+                      {/* the whole card links to the approval page, which links the payee */}
+                      <span className="font-semibold">{formatAmount(r.amount, metadataFor(r.token))}</span> to <Payee config={config} request={r} plain />
                     </span>
                     {r.reason ? <span className="mt-0.5 block text-sm text-zinc-600">for &ldquo;{r.reason}&rdquo;</span> : null}
                     <span className="mt-1 block text-xs text-zinc-500">
