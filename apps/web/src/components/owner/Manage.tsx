@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { formatUnits, parseUnits, viewAccessKeyList, viewAccount, type AccessKeyEntry } from "@spact/shared";
+import { accountId, formatUnits, parseUnits, viewAccessKeyList, viewAccount, type AccessKeyEntry } from "@spact/shared";
 
 import type { AppConfig } from "../../config.js";
 import { errorMessage, formatAmount } from "../../format.js";
@@ -20,6 +20,8 @@ import {
   setPausedActions,
   subAccountId,
   topUpNearActions,
+  withdrawActions,
+  registerWithTokenActions,
   type Decimals,
 } from "../../owner/actions.js";
 import {
@@ -30,14 +32,14 @@ import {
   swapToRestrictedKey,
   type PendingAgent,
 } from "../../owner/deploy.js";
-import { loadOwnerSnapshot, type OwnerSnapshot } from "../../near/owner.js";
+import { loadOwnerSnapshot, tokenStorage, type OwnerSnapshot } from "../../near/owner.js";
 import type { OwnerSigner } from "../../signers/index.js";
 import type { SignerState } from "../../useSigner.js";
 import { Badge, Button, Card, Mono, Notice } from "../ui.js";
 import { RulesEditor } from "./RulesEditor.js";
 import { MainnetConfirm, SignReview, TextField, TxLink } from "./SignReview.js";
 
-type Open = null | "fund" | "near" | "pause" | "add-agent" | { remove: string } | "agent-key" | "rules";
+type Open = null | "fund" | "near" | "withdraw" | "pause" | "add-agent" | { remove: string } | "agent-key" | "rules";
 
 interface Confirmed {
   section: string;
@@ -192,6 +194,27 @@ export function Manage({ config, signer, wallet }: Props) {
                 Add NEAR for storage
               </Button>
             </div>
+          )}
+        </Card>
+      </Section>
+
+      <Section id="withdraw" title="Take money out" {...sec}>
+        <Card className="space-y-4">
+          <p className="text-sm text-zinc-600">
+            Sends tokens from the vault to an account you choose, your own by default. Only <Mono>{owner}</Mono> can sign this. NEAR cannot be taken out: the
+            vault has no way to send it, so the NEAR that pays for its storage stays there for good.
+          </p>
+          {open === "withdraw" ? (
+            <WithdrawForm snap={snap} {...review} onClose={() => setOpen(null)} onDone={doneIn("withdraw")} />
+          ) : (
+            <Button
+              variant="secondary"
+              onClick={() => reopen("withdraw")}
+              disabled={!isOwner || !snap.tokens.some((t) => (t.vaultBalance ?? 0n) > 0n)}
+              testId="open-withdraw"
+            >
+              Take tokens out
+            </Button>
           )}
         </Card>
       </Section>
@@ -367,6 +390,139 @@ function FundForm({ snap, config, signer, wallet, onClose, onDone }: FormProps) 
       <div className="flex gap-2">
         <Button onClick={toReview} testId="review-fund">
           Review
+        </Button>
+        <Button variant="secondary" onClick={onClose}>
+          Close
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+type WithdrawStep = null | { units: bigint; receiver: string; register: bigint | null };
+
+/**
+ * Take tokens out (owner_withdraw). If the receiver is not registered with the token, the wallet first signs a
+ * storage_deposit for it, because otherwise the vault's transfer would fail and the tokens would stay put.
+ */
+function WithdrawForm({ snap, config, signer, wallet, onClose, onDone }: FormProps) {
+  const owner = snap.config.owner;
+  const vaultId = snap.config.vault_id;
+  const withMoney = snap.tokens.filter((t) => (t.vaultBalance ?? 0n) > 0n);
+  const [token, setToken] = useState(withMoney[0]?.token ?? "");
+  const [amount, setAmount] = useState("");
+  const [receiver, setReceiver] = useState(owner);
+  const [step, setStep] = useState<WithdrawStep>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const holding = snap.tokens.find((t) => t.token === token);
+  const m = holding?.metadata ?? null;
+
+  async function toReview() {
+    setError(null);
+    setBusy(true);
+    try {
+      if (!holding || !m) throw new Error("The token's decimals are unknown, so the amount cannot be converted safely.");
+      if (holding.vaultBalance === null) throw new Error("Could not read the vault's balance of this token.");
+      const units = parseUnits(amount.trim(), m.decimals);
+      if (units === 0n) throw new Error("Enter an amount above zero.");
+      if (units > holding.vaultBalance) throw new Error(`The vault holds ${formatAmount(holding.vaultBalance.toString(), m)}.`);
+      const to = receiver.trim();
+      if (!accountId.safeParse(to).success) throw new Error(`${to || "(empty)"} is not a NEAR account id.`);
+      if (to === vaultId) throw new Error("That is the vault itself.");
+      const storage = await tokenStorage(config.rpcUrl, token, to);
+      if (storage.registered === null) throw new Error(`Could not check whether ${to} is registered with ${m.symbol}.`);
+      if (!storage.registered && storage.min === null) throw new Error("Could not read what registering with the token costs.");
+      setStep({ units, receiver: to, register: storage.registered ? null : storage.min });
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (step && m) {
+    const shown = `${formatUnits(step.units, m.decimals)} ${m.symbol}`;
+    if (step.register !== null) {
+      return (
+        <SignReview
+          config={config}
+          signer={signer}
+          wallet={wallet}
+          key="withdraw-register"
+          title={`First: register ${step.receiver} with ${m.symbol}`}
+          receiverId={token}
+          signerId={owner}
+          actions={registerWithTokenActions(step.receiver, step.register)}
+          changes={[
+            `${step.receiver} is not registered with ${m.symbol} yet, so the vault's transfer to it would fail. This pays ${formatNear(step.register, 5)} NEAR, once, to register it.`,
+            "Then you review the withdrawal itself.",
+          ]}
+          onCancel={() => setStep(null)}
+          onDone={() => setStep({ ...step, register: null })}
+        />
+      );
+    }
+    return (
+      <SignReview
+        config={config}
+        signer={signer}
+        wallet={wallet}
+        key="withdraw-send"
+        title={`Take ${shown} out of the vault`}
+        receiverId={vaultId}
+        signerId={owner}
+        actions={withdrawActions(token, step.units, step.receiver)}
+        changes={[
+          `Moves ${shown} from ${vaultId} to ${step.receiver}.`,
+          ...(step.receiver === owner ? [] : [`${step.receiver} is not your account ${owner}. Check it: tokens sent there are not yours to take back.`]),
+          ...(snap.config.open_approvals > 0
+            ? [`${snap.config.open_approvals} payment(s) are waiting for your approval. If the vault runs short, paying one fails and nothing is sent.`]
+            : []),
+        ]}
+        onCancel={() => setStep(null)}
+        onDone={onDone}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block text-sm">
+          <span className="font-medium text-zinc-800">Token</span>
+          <select value={token} onChange={(e) => setToken(e.target.value)} className="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm" data-testid="withdraw-token">
+            {withMoney.map((t) => (
+              <option key={t.token} value={t.token}>
+                {t.metadata?.symbol ?? t.token}
+              </option>
+            ))}
+          </select>
+        </label>
+        <TextField
+          label={`Amount${m ? ` in ${m.symbol}` : ""}`}
+          value={amount}
+          onChange={setAmount}
+          testId="withdraw-amount"
+          inputMode="decimal"
+          hint={
+            holding?.vaultBalance != null && m ? (
+              <button type="button" className="underline" onClick={() => setAmount(formatUnits(holding.vaultBalance ?? 0n, m.decimals))} data-testid="withdraw-all">
+                All of it: {formatAmount(holding.vaultBalance.toString(), m)}
+              </button>
+            ) : undefined
+          }
+        />
+        <TextField label="Send to" value={receiver} onChange={setReceiver} testId="withdraw-receiver" hint="Your own account by default." />
+      </div>
+      {error ? (
+        <p className="text-sm break-words text-rose-700" data-testid="withdraw-error">
+          {error}
+        </p>
+      ) : null}
+      <div className="flex gap-2">
+        <Button onClick={() => void toReview()} disabled={busy} testId="review-withdraw">
+          {busy ? "Checking…" : "Review"}
         </Button>
         <Button variant="secondary" onClick={onClose}>
           Close
@@ -670,7 +826,8 @@ function AgentKeyFlow({ snap, config, signer, wallet, onClose, onDone }: FormPro
         config={config}
         signer={signer}
         wallet={wallet}
-        title={`Send NEAR to the new agent account`}
+        key="agent-fund"
+        title="Send NEAR to the new agent account"
         receiverId={p.agentId}
         signerId={owner}
         actions={fundImplicitActions(BigInt(p.fundYocto))}
@@ -738,6 +895,7 @@ function AgentKeyFlow({ snap, config, signer, wallet, onClose, onDone }: FormPro
         config={config}
         signer={signer}
         wallet={wallet}
+        key="agent-create"
         title={`Create ${step.agentId} with the restricted key`}
         receiverId={step.agentId}
         signerId={owner}
@@ -760,6 +918,7 @@ function AgentKeyFlow({ snap, config, signer, wallet, onClose, onDone }: FormPro
         config={config}
         signer={signer}
         wallet={wallet}
+        key="agent-add"
         title={`Add ${step.agentId} to the vault`}
         receiverId={snap.config.vault_id}
         signerId={owner}

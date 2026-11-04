@@ -24,6 +24,7 @@ import {
   setPolicyActions,
   subAccountId,
   vaultStorageNeeded,
+  withdrawActions,
   YOCTO_PER_NEAR,
 } from "../src/owner/actions.js";
 import { checkDeployed, type VaultInspection } from "../src/owner/deploy.js";
@@ -121,8 +122,18 @@ describe("transactions the owner signs", () => {
     expect(JSON.stringify(actions)).not.toContain("ft_transfer_call");
   });
 
+  it("takes tokens out with owner_withdraw to the account given, and refuses zero", () => {
+    expect(withdrawActions(USDC, 2_500_000n, "alice.near")).toEqual([
+      {
+        type: "FunctionCall",
+        params: { methodName: "owner_withdraw", args: { token: USDC, amount: "2500000", receiver_id: "alice.near" }, gas: "30000000000000", deposit: "1" },
+      },
+    ]);
+    expect(() => withdrawActions(USDC, 0n, "alice.near")).toThrow(OwnerInputError);
+  });
+
   it("attaches exactly 1 yoctoNEAR to owner calls, so only a full-access key can sign them", () => {
-    for (const a of [...setPolicyActions(policy), ...setPausedActions(true)]) {
+    for (const a of [...setPolicyActions(policy), ...setPausedActions(true), ...withdrawActions(USDC, 1n, "alice.near")]) {
       expect(a).toMatchObject({ type: "FunctionCall", params: { deposit: "1" } });
     }
     expect(setPolicyActions(policy)[0]).toMatchObject({ params: { methodName: "set_policy", args: { policy } } });

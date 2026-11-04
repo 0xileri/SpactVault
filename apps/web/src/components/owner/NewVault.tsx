@@ -69,7 +69,8 @@ const DEFAULT_NEAR = "3.2";
 
 function defaults(owner: string | null): Form {
   return {
-    mode: "named",
+    // Meteor refuses the named way (it blocks websites from installing contract code, ADR-035)
+    mode: "any-wallet",
     name: "vault2",
     agents: owner ? `agent2.${owner}` : "",
     token: "",
@@ -443,7 +444,7 @@ export function NewVault({ config, signer, wallet }: { config: AppConfig; signer
             p.mode === "named"
               ? `Creates ${p.vaultId}, sends it ${formatNear(step.fund)} NEAR and installs the published vault code (code hash ${LATEST_BUILD.codeHash}, checked in this browser).`
               : `Sends ${formatNear(step.fund)} NEAR to ${p.vaultId}, a new account whose only key this tab made. Every wallet can sign a plain transfer.`,
-            `About ${formatNear(vaultStorageNeeded(LATEST_BUILD.bytes ?? 0) - YOCTO_PER_NEAR / 20n)} NEAR stays locked in the vault to store the code; the rest pays for stored requests.`,
+            `All ${formatNear(step.fund)} NEAR stays in the vault for good: about ${formatNear(vaultStorageNeeded(LATEST_BUILD.bytes ?? 0) - YOCTO_PER_NEAR / 20n)} NEAR stores the code and the rest pays for stored requests. The vault has no way to send NEAR out, so none of it comes back to you. Tokens you add later can be taken out.`,
             p.mode === "named"
               ? "Adds a setup key that only this tab has. It can only call `new` on the vault, once. No full-access key is added."
               : "Step 2, signed by this tab, installs the code, starts the vault and deletes that key.",
@@ -478,20 +479,20 @@ export function NewVault({ config, signer, wallet }: { config: AppConfig; signer
         <fieldset className="space-y-2" data-testid="vault-mode">
           <legend className="text-sm font-medium text-zinc-800">How the vault is created</legend>
           <label className="flex items-start gap-2 text-sm">
+            <input type="radio" name="vault-mode" checked={form.mode === "any-wallet"} onChange={() => setForm((f) => ({ ...f, mode: "any-wallet" }))} className="mt-0.5" data-testid="mode-any-wallet" />
+            <span>
+              <span className="font-medium">Any wallet</span>, at a 64-character address. Works with Meteor.
+              <span className="block text-xs text-zinc-500">Your wallet only sends NEAR, which every NEAR wallet can do. This tab does the rest, and the vault ends with no keys at all.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm">
             <input type="radio" name="vault-mode" checked={form.mode === "named"} onChange={() => setForm((f) => ({ ...f, mode: "named" }))} className="mt-0.5" data-testid="mode-named" />
             <span>
               <span className="font-medium">With a name under your account</span>, like <Mono>{`vault2.${owner ?? "you.near"}`}</Mono>.
               <span className="block text-xs text-zinc-500">
-                Your wallet creates the account, installs the code and adds a one-use setup key. Most wallets can sign this; if yours refuses, use the next
-                option.
+                Your wallet creates the account, installs the code and adds a one-use setup key. Meteor refuses this: it blocks websites from installing contract
+                code. Only for a wallet that allows it; if yours refuses, nothing is sent.
               </span>
-            </span>
-          </label>
-          <label className="flex items-start gap-2 text-sm">
-            <input type="radio" name="vault-mode" checked={form.mode === "any-wallet"} onChange={() => setForm((f) => ({ ...f, mode: "any-wallet" }))} className="mt-0.5" data-testid="mode-any-wallet" />
-            <span>
-              <span className="font-medium">Any wallet</span>, at a 64-character address.
-              <span className="block text-xs text-zinc-500">Your wallet only sends NEAR, which every NEAR wallet can do. This tab does the rest, and the vault ends with no keys at all.</span>
             </span>
           </label>
         </fieldset>
@@ -505,7 +506,7 @@ export function NewVault({ config, signer, wallet }: { config: AppConfig; signer
             hint={owner ? <>Creates <Mono>{`${form.name || "…"}.${owner}`}</Mono></> : "Becomes name.your-account"}
           />
           ) : null}
-          <TextField label="NEAR for storage" value={form.near} onChange={set("near")} testId="vault-near" inputMode="decimal" hint="At least 2.8 NEAR: the code alone is 274 kB." />
+          <TextField label="NEAR for storage" value={form.near} onChange={set("near")} testId="vault-near" inputMode="decimal" hint="At least 2.8 NEAR: the code alone is 274 kB. This NEAR stays in the vault for good." />
           <TextField label="Agent accounts" value={form.agents} onChange={set("agents")} testId="vault-agents" hint="Can only ask the vault to pay. It does not need to exist yet." />
           <TextField label="Token" value={form.token} onChange={set("token")} testId="vault-token" hint={config.network === "mainnet" ? "Native USDC on NEAR" : "NEP-141 token contract"} />
           <TextField label="Paid instantly up to" value={form.auto} onChange={set("auto")} testId="vault-auto" inputMode="decimal" />

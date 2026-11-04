@@ -79,6 +79,8 @@ test("create a named vault: the wallet creates it with the published code and a 
   const traffic = recordTraffic(page);
   await page.goto("/?page=new-vault");
   await connect(page);
+  // Any wallet is the default (Meteor refuses the named way); this test takes the named way
+  await page.getByTestId("mode-named").check();
   await page.getByTestId("vault-name").fill("vault2");
   await page.getByTestId("vault-agents").fill(AGENT2);
   await page.getByTestId("vault-recipients").fill(f.api_id);
@@ -159,6 +161,46 @@ test("fund the vault: it is registered with the token first, then the tokens mov
   await sign(page);
   expect(BigInt(await view<string>(f.token_id, "ft_balance_of", { account_id: VAULT2 }))).toBe(10n * UNIT);
   await expect(page.getByTestId(`manage-balance-${f.token_id}`)).toHaveText("10 TUSD");
+});
+
+test("take money out: owner_withdraw to the owner's own account", async ({ page }) => {
+  await page.goto(`/?page=manage&vault=${VAULT2}`);
+  await connect(page);
+  const ownerBefore = BigInt(await view<string>(f.token_id, "ft_balance_of", { account_id: f.owner_id }));
+  await page.getByTestId("open-withdraw").click();
+  await expect(page.getByTestId("withdraw-receiver")).toHaveValue(f.owner_id);
+  // more than the vault holds is refused before anything is signed
+  await page.getByTestId("withdraw-amount").fill("11");
+  await page.getByTestId("review-withdraw").click();
+  await expect(page.getByTestId("withdraw-error")).toContainText("The vault holds 10 TUSD");
+  await page.getByTestId("withdraw-amount").fill("1");
+  await page.getByTestId("review-withdraw").click();
+  await expect(page.getByTestId("review-actions")).toContainText(`Call owner_withdraw on ${VAULT2} (with 1 yoctoNEAR, so only a full-access key can sign it)`);
+  await expect(page.getByTestId("review-changes")).toContainText(`Moves 1 TUSD from ${VAULT2} to ${f.owner_id}.`);
+  await expect(page.getByTestId("review-json")).toContainText(`"receiver_id": "${f.owner_id}"`);
+  await sign(page);
+  expect(BigInt(await view<string>(f.token_id, "ft_balance_of", { account_id: VAULT2 }))).toBe(9n * UNIT);
+  expect(BigInt(await view<string>(f.token_id, "ft_balance_of", { account_id: f.owner_id }))).toBe(ownerBefore + UNIT);
+  await expect(page.getByTestId(`manage-balance-${f.token_id}`)).toHaveText("9 TUSD");
+});
+
+test("take money out to an account that is not registered with the token: it is registered first, so the transfer lands", async ({ page }) => {
+  await page.goto(`/?page=manage&vault=${VAULT2}`);
+  await connect(page);
+  expect(await view<unknown>(f.token_id, "storage_balance_of", { account_id: f.unregistered_id })).toBeNull();
+  await page.getByTestId("open-withdraw").click();
+  await page.getByTestId("withdraw-amount").fill("1");
+  await page.getByTestId("withdraw-receiver").fill(f.unregistered_id);
+  await page.getByTestId("review-withdraw").click();
+  await expect(page.getByTestId("review-actions")).toContainText(`Call storage_deposit on ${f.token_id}`);
+  await expect(page.getByTestId("review-changes")).toContainText(`${f.unregistered_id} is not registered with TUSD yet`);
+  await clickSign(page);
+  // then the withdrawal itself, with a warning that this is not the owner's account
+  await expect(page.getByTestId("review-actions")).toContainText(`Call owner_withdraw on ${VAULT2}`, { timeout: 60_000 });
+  await expect(page.getByTestId("review-changes")).toContainText(`${f.unregistered_id} is not your account ${f.owner_id}`);
+  await sign(page);
+  expect(BigInt(await view<string>(f.token_id, "ft_balance_of", { account_id: f.unregistered_id }))).toBe(UNIT);
+  expect(BigInt(await view<string>(f.token_id, "ft_balance_of", { account_id: VAULT2 }))).toBe(8n * UNIT);
 });
 
 test("change the rules: the review says what changes, and the vault gets the new version", async ({ page }) => {
@@ -284,6 +326,24 @@ test("agent key: made in the browser, saved once, put on a new agent account tha
   expect(BigInt(await view<string>(f.token_id, "ft_balance_of", { account_id: f.api_id }))).toBe(before + 2n * UNIT);
 });
 
+test("agent key for an account the vault does not list yet: the wallet creates it, then a fresh review adds it as an agent", async ({ page }) => {
+  const agent3 = `agent3.${f.owner_id}`;
+  await page.goto(`/?page=manage&vault=${VAULT2}`);
+  await connect(page);
+  await page.getByTestId("open-agent-key").click();
+  await page.getByTestId("agent-name").fill("agent3");
+  await page.getByTestId("make-agent-key").click();
+  await Promise.all([page.waitForEvent("download"), page.getByTestId("download-key").click()]);
+  await expect(page.getByTestId("review-actions")).toContainText(`Create the account ${agent3}`);
+  await clickSign(page);
+  // the add_agent review starts fresh: not already "confirmed", and its own Sign button
+  await expect(page.getByTestId("review-actions")).toContainText(`Call add_agent on ${VAULT2}`, { timeout: 60_000 });
+  await expect(page.getByText("Confirmed on chain")).toHaveCount(0);
+  await clickSign(page);
+  await expect(page.getByTestId("agent-ready")).toBeVisible({ timeout: 60_000 });
+  expect((await view<{ agents: string[] }>(VAULT2, "get_config")).agents).toEqual([AGENT2, agent3]);
+});
+
 test("agent key, any wallet: the wallet only sends NEAR, the tab swaps in the restricted key, and a reload in between is fine", async ({ page }) => {
   const traffic = recordTraffic(page);
   await page.goto(`/?page=manage&vault=${VAULT2}`);
@@ -328,7 +388,7 @@ test("agent key, any wallet: the wallet only sends NEAR, the tab swaps in the re
   expect(keys.keys[0]?.access_key.permission).toEqual({
     FunctionCall: { allowance: "250000000000000000000000", receiver_id: VAULT2, method_names: ["request_direct_payment", "request_cross_chain_payment", "execute_request"] },
   });
-  expect((await view<{ agents: string[] }>(VAULT2, "get_config")).agents).toEqual([AGENT2, agentId]);
+  expect((await view<{ agents: string[] }>(VAULT2, "get_config")).agents).toEqual([AGENT2, `agent3.${f.owner_id}`, agentId]);
   expect(traffic.some((t) => t.includes(file.private_key.slice("ed25519:".length)))).toBe(false);
 
   // and the key works
@@ -346,6 +406,7 @@ test("named vault: a reload between the two steps picks the setup up again and f
   const vault3 = `vault3.${f.owner_id}`;
   await page.goto("/?page=new-vault");
   await connect(page);
+  await page.getByTestId("mode-named").check();
   await page.getByTestId("vault-name").fill("vault3");
   await page.getByTestId("vault-recipients").fill(f.api_id);
   await page.getByTestId("review-vault").click();

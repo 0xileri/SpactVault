@@ -63,6 +63,8 @@ async fn main() -> anyhow::Result<()> {
         "agent_key": format!("function-call key: {} on {}, 1 NEAR gas allowance", AGENT_METHODS.join(", "), env.vault.id()),
         "api_id": env.api.id(),
         "mallory_id": env.mallory.id(),
+        // exists, but is never registered with the token (a receiver that has to register first)
+        "unregistered_id": env.unregistered.id(),
         "demo_request_id": DEMO_REQUEST,
         "cross_chain_request_id": CROSS_CHAIN_REQUEST,
         "deposit_id": deposit.id(),
