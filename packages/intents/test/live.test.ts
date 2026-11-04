@@ -16,9 +16,10 @@ import {
   reconcile,
   statusResponseSchema,
   tokenListSchema,
+  txExplorerLink,
   verifyQuoteSignature,
 } from "../src/index.js";
-import { errors, quoteDryBase, tokens } from "./fixtures/live/index.js";
+import { errors, quoteDryBase, statusSuccess, tokens } from "./fixtures/live/index.js";
 import * as dry from "./fixtures/live/quote-dry.js";
 import * as live from "./fixtures/live/quote.js";
 import { LIVE, liveRequest } from "./fixtures/live/request.js";
@@ -231,5 +232,57 @@ describe("live dry quote to Base for the mainnet run (recorded 2026-11-04)", () 
     expect(parsed.quote.depositAddress).toBeUndefined();
     // the destination is one 1Click lists, on Base
     expect(findRoute(tokens.body, LIVE.usdc, built.destinationAsset)?.destination.blockchain).toBe("base");
+  });
+});
+
+describe("the first real deposit: 1Click's SUCCESS record for the mainnet run (recorded 2026-11-04)", () => {
+  const S = statusSuccess.STORED;
+  const deadlineNs = ns(S.quote_deadline);
+  const run: PaymentRequest = {
+    request_id: S.request_id,
+    agent_id: S.agent_id,
+    route: "ONE_CLICK_ORIGIN_NEAR",
+    token: LIVE.usdc,
+    amount: "1000000",
+    recipient: statusSuccess.DEPOSIT,
+    reason: "SpactVault mainnet cross-chain test: 1 USDC to Base",
+    created_at_ns: ns("2026-11-04T12:38:05.000Z"),
+    expires_at_ns: (BigInt(deadlineNs) - 60_000_000_000n).toString(),
+    policy_version: 2,
+    cross_chain: {
+      destination_chain: "base",
+      destination_asset: tokens.BASE_USDC,
+      destination_recipient: quoteDryBase.BASE_RECIPIENT,
+      refund_to: S.vault,
+      min_amount_out: S.min_amount_out,
+      quote_hash: S.quote_hash,
+      quote_expires_at_ns: deadlineNs,
+    },
+    request_hash: "0".repeat(64),
+    status: "CROSS_CHAIN_PENDING",
+    reason_code: "EXTERNAL_SETTLEMENT_PENDING",
+    approved_by: "0xileri.near",
+    reserved_day: null,
+    updated_at_ns: ns("2026-11-04T12:46:33.938Z"),
+  };
+
+  it("parses, carries 1Click's signed quote, and matches what the vault stored", () => {
+    expect(statusSuccess.status).toBe(200);
+    const parsed = statusResponseSchema.parse(statusSuccess.body);
+    expect(parsed.status).toBe("SUCCESS");
+    expect(verifyQuoteSignature(statusSuccess.body.quoteResponse)).toBe(true);
+    expect(depositMismatches(run, statusSuccess.body)).toEqual([]);
+    // the vault paid with a plain ft_transfer, and that is the deposit 1Click credits
+    expect(parsed.swapDetails?.originChainTxHashes?.map((t) => t.hash)).toEqual([S.payment_tx]);
+    expect(parsed.swapDetails).toMatchObject({ depositedAmount: "1000000", amountOut: "997398", refundedAmount: "0" });
+  });
+
+  it("reconciles as delivered and final, with no refund and no budget back", () => {
+    const r = reconcile(run, statusSuccess.body);
+    expect(r).toMatchObject({ providerStatus: "SUCCESS", outcome: "reported_delivered", providerFinal: true, restoresBudget: false, reportedRefund: "0" });
+    const destination = statusResponseSchema.parse(statusSuccess.body).swapDetails?.destinationChainTxHashes?.map((t) => t.hash);
+    expect(destination).toEqual([S.base_tx]);
+    // the page builds its own explorer link for the Base transaction
+    expect(txExplorerLink("base", S.base_tx)).toBe(`https://basescan.org/tx/${S.base_tx}`);
   });
 });
