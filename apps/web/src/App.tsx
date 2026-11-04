@@ -144,13 +144,13 @@ const OWNER_PAGES = [
 function OwnerTabs({ page }: { page: string | null }) {
   const link = useLink();
   return (
-    <nav aria-label="Owner pages" className="mb-8 flex flex-wrap gap-1 border-b border-line pb-3 text-sm" data-testid="owner-tabs">
+    <nav aria-label="Owner pages" className="-mt-6 mb-8 grid grid-cols-4 gap-1 rounded-2xl bg-white/60 p-1 text-[13px] ring-1 ring-line/60 backdrop-blur sm:hidden" data-testid="owner-tabs">
       {OWNER_PAGES.map((p) => (
         <a
           key={p.page}
           href={link(`?page=${p.page}`)}
           aria-current={page === p.page ? "page" : undefined}
-          className={`rounded-full px-3 py-1 transition-colors duration-300 ease-fluid ${page === p.page ? "bg-zinc-100 font-medium text-ink" : "text-zinc-600 hover:text-ink"}`}
+          className={`rounded-xl px-1 py-1.5 text-center whitespace-nowrap transition-colors duration-300 ease-fluid ${page === p.page ? "bg-white font-medium text-ink shadow-sm shadow-zinc-900/5 ring-1 ring-line" : "text-zinc-600 hover:text-ink"}`}
         >
           {p.label}
         </a>
@@ -332,7 +332,7 @@ export function App({ config: chosen, configs = [chosen] }: { config: SiteConfig
           </nav>
         </header>
 
-        <main id="main" tabIndex={-1} className={`flex-1 focus:outline-none ${landing ? "-mt-20" : "pb-24"}`}>
+        <main id="main" tabIndex={-1} className={`flex-1 -mt-20 focus:outline-none ${landing ? "" : "app-backdrop pt-20 pb-24"}`}>
           {wallet.error ? (
             <div className="mx-auto mt-6 max-w-5xl px-6">
               <Notice tone="bad" title="Wallet error">
@@ -343,9 +343,9 @@ export function App({ config: chosen, configs = [chosen] }: { config: SiteConfig
           {landing ? (
             content
           ) : (
-            <div className={`mx-auto px-6 pt-8 ${requestId ? "max-w-2xl" : "max-w-5xl"}`}>
+            <div className={`mx-auto px-4 pt-8 sm:px-6 ${requestId ? "max-w-3xl" : "max-w-6xl"}`}>
               {onLegal ? null : (
-                <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                <div className="mb-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/60 px-3 py-2 shadow-sm shadow-violet-900/5 ring-1 ring-line/60 backdrop-blur">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500" data-testid="environment">
                     {config.vaultId === null ? (
                       <Badge tone="neutral">No vault connected</Badge>

@@ -1,4 +1,4 @@
-import { ArrowRight } from "@phosphor-icons/react";
+import { ArrowRight, Coins, Gauge, Hourglass, ListChecks, ShieldCheck, UsersThree, type Icon } from "@phosphor-icons/react";
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
 
 import type { FtMetadata, PaymentRequest } from "@spact/shared";
@@ -9,7 +9,7 @@ import { budgetResetNs, isLapsed, outcomeLine, usedPercent, waitingForOwner, typ
 import { errorMessage, formatAmount, formatRelative, formatUtc } from "../format.js";
 import { listRequests, loadDashboard, type DashboardSnapshot } from "../near/vault.js";
 import { useLink } from "../network.js";
-import { Badge, Button, Card, Mono, Notice, StatusBadge } from "./ui.js";
+import { Badge, Button, Card, IconChip, Mono, Notice, PageHeader, SectionTitle, StatusBadge, type ChipTint } from "./ui.js";
 
 const PAGE = 50;
 const REFRESH_MS = 15_000;
@@ -19,23 +19,21 @@ function requestLink(id: string): string {
 }
 
 
-function SectionHeading({ title, children }: { title: string; children?: ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-baseline justify-between gap-2">
-      <h2 className="text-lg font-semibold tracking-tight text-ink">{title}</h2>
-      {children ? <div className="text-xs text-zinc-500">{children}</div> : null}
-    </div>
-  );
+function SectionHeading({ title, icon, tint, children }: { title: string; icon: Icon; tint?: ChipTint; children?: ReactNode }) {
+  return <SectionTitle icon={icon} tint={tint} title={title} aside={children} />;
 }
 
-function Stat({ label, children, testId, foot }: { label: string; children: ReactNode; testId?: string; foot?: ReactNode }) {
+function Stat({ label, children, testId, foot, icon, tint }: { label: string; children: ReactNode; testId?: string; foot?: ReactNode; icon: Icon; tint?: ChipTint }) {
   return (
     <Card className="p-5">
-      <p className="text-sm text-zinc-500">{label}</p>
-      <div className="mt-1 text-2xl font-semibold tracking-tight text-ink sm:text-3xl" data-testid={testId}>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-zinc-500">{label}</p>
+        <IconChip icon={icon} tint={tint} size="sm" />
+      </div>
+      <div className="mt-3 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl" data-testid={testId}>
         {children}
       </div>
-      {foot ? <div className="mt-2 text-xs text-zinc-500">{foot}</div> : null}
+      {foot ? <div className="mt-3 text-xs text-zinc-500">{foot}</div> : null}
     </Card>
   );
 }
@@ -48,7 +46,7 @@ function MoneyStats({ token, nowNs }: { token: TokenSummary; nowNs: bigint }) {
   const resetIn = budget ? Number((budgetResetNs(budget) - nowNs) / 1_000_000_000n) : null;
   return (
     <>
-      <Stat label="Money in the vault" testId={`balance-${policy.token}`} foot={<Mono>{policy.token}</Mono>}>
+      <Stat label="Money in the vault" icon={Coins} testId={`balance-${policy.token}`} foot={<Mono>{policy.token}</Mono>}>
         {balance === null ? "unknown" : fmt(balance)}
       </Stat>
       {budgetProblem ? (
@@ -63,6 +61,8 @@ function MoneyStats({ token, nowNs }: { token: TokenSummary; nowNs: bigint }) {
       ) : budget && pct !== null ? (
         <Stat
           label="Left to spend today"
+          icon={Gauge}
+          tint="paid"
           foot={
             <>
               <span className="block h-1.5 overflow-hidden rounded-full bg-zinc-100" role="progressbar" aria-label="Share of today's limit used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
@@ -79,7 +79,7 @@ function MoneyStats({ token, nowNs }: { token: TokenSummary; nowNs: bigint }) {
           <span className="ml-2 text-sm font-normal tracking-normal text-zinc-500">of {fmt(budget.daily_limit)}</span>
         </Stat>
       ) : (
-        <Stat label="Left to spend today">unknown</Stat>
+        <Stat label="Left to spend today" icon={Gauge} tint="paid">unknown</Stat>
       )}
     </>
   );
@@ -231,18 +231,21 @@ export function Dashboard({ config }: { config: AppConfig }) {
 
   return (
     <div className="space-y-10" data-testid="dashboard">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-3 font-display text-3xl font-bold tracking-tight">
+      <PageHeader
+        eyebrow="Dashboard · read live from NEAR"
+        title={
+          <>
             Your vault
             <span data-testid="vault-state">{vault.paused ? <Badge tone="bad">Paused</Badge> : <Badge tone="good">Active</Badge>}</span>
-          </h1>
-          <p className="mt-1 text-sm text-zinc-600">What your agent has spent, and what is waiting for you. Updates every {REFRESH_MS / 1000} seconds.</p>
-        </div>
-        <Button variant="secondary" onClick={() => void refresh()} disabled={loading} testId="refresh">
-          {loading ? "Reading…" : "Refresh"}
-        </Button>
-      </div>
+          </>
+        }
+        lede={<>What your agent has spent, and what is waiting for you. Updates every {REFRESH_MS / 1000} seconds.</>}
+        actions={
+          <Button variant="secondary" onClick={() => void refresh()} disabled={loading} testId="refresh">
+            {loading ? "Reading…" : "Refresh"}
+          </Button>
+        }
+      />
 
       {error ? (
         <Notice tone="bad" title="The last update failed, so this is the previous reading">
@@ -266,13 +269,13 @@ export function Dashboard({ config }: { config: AppConfig }) {
         {tokens.map((t) => (
           <MoneyStats key={t.policy.token} token={t} nowNs={nowNs} />
         ))}
-        <Stat label="Waiting for your OK" testId="waiting-count" foot={`At most ${policy.max_open_approvals} can wait at once.`}>
+        <Stat label="Waiting for your OK" icon={Hourglass} tint="waits" testId="waiting-count" foot={`At most ${policy.max_open_approvals} can wait at once.`}>
           {waiting.length}
         </Stat>
       </div>
 
       <section className="space-y-4" aria-label="Waiting for your OK">
-        <SectionHeading title="Waiting for your OK" />
+        <SectionHeading title="Waiting for your OK" icon={Hourglass} tint="waits" />
         {waiting.length === 0 ? (
           <Card>
             <p className="text-sm text-zinc-600">
@@ -286,7 +289,7 @@ export function Dashboard({ config }: { config: AppConfig }) {
               <li key={r.request_id}>
                 <a
                   href={link(requestLink(r.request_id))}
-                  className="group flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-surface p-5 transition duration-300 ease-fluid hover:border-brand/40 focus-visible:outline-2 focus-visible:outline-brand"
+                  className="group flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/80 bg-white/90 p-5 shadow-[0_1px_2px_rgb(20_15_43/0.04),0_12px_32px_-18px_rgb(76_29_149/0.22)] ring-1 ring-line/70 transition duration-300 ease-fluid hover:-translate-y-0.5 hover:ring-brand/40 focus-visible:outline-2 focus-visible:outline-brand"
                 >
                   <span className="min-w-0">
                     <span className="block text-base">
@@ -310,7 +313,7 @@ export function Dashboard({ config }: { config: AppConfig }) {
       </section>
 
       <section className="space-y-4" aria-label="What your agent did">
-        <SectionHeading title="What your agent did">
+        <SectionHeading title="What your agent did" icon={ListChecks}>
           {requests.length < vault.request_count ? `Newest ${requests.length} of ${vault.request_count}` : "Newest first"}
         </SectionHeading>
         <Card>
@@ -334,7 +337,7 @@ export function Dashboard({ config }: { config: AppConfig }) {
       </section>
 
       <section className="space-y-4" aria-label="Your rules">
-        <SectionHeading title="Your rules" />
+        <SectionHeading title="Your rules" icon={ShieldCheck} tint="paid" />
         <Card>
           <dl className="grid grid-cols-1 gap-x-6 gap-y-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
             {tokens.map((t) => {
@@ -381,7 +384,7 @@ export function Dashboard({ config }: { config: AppConfig }) {
       </section>
 
       <section className="space-y-4" aria-label="Who is who">
-        <SectionHeading title="Who is who" />
+        <SectionHeading title="Who is who" icon={UsersThree} tint="sky" />
         <Card>
           <dl className="grid grid-cols-1 gap-5 text-sm sm:grid-cols-3">
             <div>

@@ -1,3 +1,4 @@
+import { ArrowCircleUp, Coins, Key, PauseCircle, Robot, SlidersHorizontal, type Icon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { accountId, formatUnits, parseUnits, viewAccessKeyList, viewAccount, type AccessKeyEntry } from "@spact/shared";
@@ -35,7 +36,7 @@ import {
 import { loadOwnerSnapshot, tokenStorage, type OwnerSnapshot } from "../../near/owner.js";
 import type { OwnerSigner } from "../../signers/index.js";
 import type { SignerState } from "../../useSigner.js";
-import { Badge, Button, Card, Mono, Notice } from "../ui.js";
+import { Badge, Button, Card, Mono, Notice, PageHeader, SectionTitle, type ChipTint } from "../ui.js";
 import { RulesEditor } from "./RulesEditor.js";
 import { AccountLink } from "../AccountLink.js";
 import { MainnetConfirm, SignReview, TextField, TxLink } from "./SignReview.js";
@@ -54,6 +55,9 @@ function Section({
   aside,
   confirmed,
   config,
+  icon,
+  tint,
+  wide = false,
 }: {
   id: string;
   title: string;
@@ -61,13 +65,14 @@ function Section({
   aside?: ReactNode;
   confirmed: Confirmed | null;
   config: AppConfig;
+  icon: Icon;
+  tint?: ChipTint;
+  /** spans both columns on wide screens: for sections that open large forms */
+  wide?: boolean;
 }) {
   return (
-    <section id={id} aria-label={title} className="scroll-mt-28 space-y-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-lg font-semibold tracking-tight text-ink">{title}</h2>
-        {aside ? <div className="text-xs text-zinc-500">{aside}</div> : null}
-      </div>
+    <section id={id} aria-label={title} className={`min-w-0 scroll-mt-28 space-y-4 ${wide ? "lg:col-span-2" : ""}`}>
+      <SectionTitle icon={icon} tint={tint} title={title} aside={aside} />
       {confirmed?.section === id ? (
         <div data-testid={`confirmed-${id}`}>
           <Notice tone="good" title="Confirmed on chain">
@@ -149,13 +154,18 @@ export function Manage({ config, signer, wallet }: Props) {
   const sec = { confirmed, config };
 
   return (
-    <div className="space-y-10" data-testid="manage">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">Manage your vault</h1>
-        <p className="text-sm text-zinc-600">
-          Every change here is one transaction your wallet signs. You see exactly what it does first. Only the owner <Mono>{owner}</Mono> can sign changes;
-          anyone can add money.
-        </p>
+    <div className="grid items-start gap-x-6 gap-y-12 lg:grid-cols-2" data-testid="manage">
+      <div className="-mb-6 space-y-4 lg:col-span-2">
+        <PageHeader
+          eyebrow="Owner tools"
+          title="Manage your vault"
+          lede={
+            <>
+              Every change here is one transaction your wallet signs. You see exactly what it does first. Only the owner <Mono>{owner}</Mono> can sign
+              changes; anyone can add money.
+            </>
+          }
+        />
         {wallet.accountId && !isOwner ? (
           <Notice tone="warn" title="You are not this vault's owner">
             <p>
@@ -166,7 +176,7 @@ export function Manage({ config, signer, wallet }: Props) {
         ) : null}
       </div>
 
-      <Section id="fund" title="Add money" {...sec}>
+      <Section id="fund" title="Add money" icon={Coins} {...sec}>
         <Card className="space-y-4">
           <ul className="space-y-1 text-sm">
             {snap.tokens.map((t) => (
@@ -199,7 +209,7 @@ export function Manage({ config, signer, wallet }: Props) {
         </Card>
       </Section>
 
-      <Section id="withdraw" title="Take money out" {...sec}>
+      <Section id="withdraw" title="Take money out" icon={ArrowCircleUp} tint="sky" {...sec}>
         <Card className="space-y-4">
           <p className="text-sm text-zinc-600">
             Sends tokens from the vault to an account you choose, your own by default. Only <Mono>{owner}</Mono> can sign this. NEAR cannot be taken out: the
@@ -220,7 +230,7 @@ export function Manage({ config, signer, wallet }: Props) {
         </Card>
       </Section>
 
-      <Section id="pause" title="Pause" {...sec}>
+      <Section id="pause" title="Pause" icon={PauseCircle} tint="waits" {...sec}>
         <Card className="space-y-4">
           <p className="text-sm">
             {vault.paused ? (
@@ -252,7 +262,7 @@ export function Manage({ config, signer, wallet }: Props) {
         </Card>
       </Section>
 
-      <Section id="agents" title="Agents" {...sec}>
+      <Section id="agents" title="Agents" icon={Robot} {...sec}>
         <Card className="space-y-4">
           <ul className="space-y-2 text-sm" data-testid="agent-list">
             {vault.agents.length === 0 ? <li className="text-zinc-600">No agents. Nobody can ask this vault to pay.</li> : null}
@@ -286,7 +296,7 @@ export function Manage({ config, signer, wallet }: Props) {
         </Card>
       </Section>
 
-      <Section id="agent-key" title="Give your agent a key" {...sec}>
+      <Section id="agent-key" title="Give your agent a key" icon={Key} tint="ink" wide {...sec}>
         <Card className="space-y-4">
           <p className="text-sm text-zinc-600">
             Creates a new agent account under yours whose only key can call {AGENT_METHODS.join(", ")} on this vault, and nothing else. The key is made in this
@@ -302,7 +312,7 @@ export function Manage({ config, signer, wallet }: Props) {
         </Card>
       </Section>
 
-      <Section id="rules" title="Rules" aside={`version ${vault.policy_version}`} {...sec}>
+      <Section id="rules" title="Rules" aside={`version ${vault.policy_version}`} icon={SlidersHorizontal} tint="paid" wide {...sec}>
         <RulesEditor
           {...review}
           vault={vault}

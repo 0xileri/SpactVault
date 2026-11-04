@@ -402,6 +402,16 @@ After the mainnet cross-chain run (STATUS "Mainnet cross-chain run"), the owner 
 - **Every id is a link.** Transaction hashes already linked. Now every NEAR account the site shows links to the account explorer, including the payees in the dashboard's lists, the agents on Manage, and the deposit address and refund account on the approval page. Addresses on another chain (a 1Click route's final recipient) link to that chain's explorer, built by the page from the chain name and the address format (`addressExplorerLink` in `packages/intents`), never taken from 1Click: Solana, Base, Ethereum, Arbitrum, Polygon, BNB Chain, Optimism. An address in the wrong format, or on another chain, stays plain text. A browser test builds the site with a stand-in explorer written as base URLs and checks the links on the front page, the dashboard and both kinds of approval page.
 - **Two things the run showed, fixed here.** The front page counted only `SETTLED` payments, so the run's vault, whose one payment is a cross-chain one (`CROSS_CHAIN_PENDING`, sent to 1Click), would have shown "Payments made: 0". A sent cross-chain payment now counts. And the approval page now says that registering the deposit address is step 1 of 2 and is not the approval, after the owner took the registration for the approval during the run.
 
+## ADR-039: The app pages share the front page's look (2026-11-04)
+
+ADR-037 kept the app pages plain paper. Next to the front page they looked like another product, and they are what a judge opens from the README (the dashboard, the approval page, the Security Lab). The owner asked for them to look as finished as the front page.
+
+- **One backdrop and one bar.** Every app page sits on the hero's violet light, fading into paper (`.app-backdrop`). The network badge, the vault and the wallet controls share one translucent bar, instead of a row each.
+- **Owner tabs only on phones.** The top navigation already lists Dashboard, Cross-chain, Manage and Create your vault on wider screens, so the second row of tabs shows only on phones, where Manage is not in the top navigation, as a four-part segmented control.
+- **Shared parts** in `components/ui.tsx`: `PageHeader` (a mono eyebrow, a display-size title, a lede, the page's actions), `SectionTitle` and `IconChip` (the front page's rounded icon squares), raised `Card`s, `Notice`s with an icon per tone, and buttons that lift on hover. Every page uses them.
+- **Page by page.** The dashboard's stat tiles get icons and larger numbers. The approval page's request card gets an accent strip and a larger amount, the safety check a shield, and the decision card a brand ring. Manage is two columns on wide screens, with the two sections that open large forms (agent key, rules) at full width. The Security Lab's tiles get icons and each case a colored edge for its status. Privacy and terms is a column of cards.
+- **What did not change:** every test id and every visible word, so the browser tests keep checking the same behavior (49 passed). Phones: no page scrolls sideways at 390 px. Motion still stops under reduced motion; the new hover lifts are transforms the existing rule covers.
+
 ## Open questions (from AGENTS.md section 17)
 
 - [x] Official `HACKATHON.md`: at the repo root; the owner's copy of 2026-10-23, replaced on 2026-11-04 by the owner's paste of the live version.

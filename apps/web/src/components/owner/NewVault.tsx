@@ -36,7 +36,7 @@ import {
 import { lockProblem } from "../../contracts.js";
 import type { OwnerSigner } from "../../signers/index.js";
 import type { SignerState } from "../../useSigner.js";
-import { Badge, Button, Card, Mono, Notice } from "../ui.js";
+import { Badge, Button, Card, Mono, Notice, PageHeader } from "../ui.js";
 import { MainnetConfirm, SignReview, splitList, TextField, TxLink } from "./SignReview.js";
 
 /** Native USDC on NEAR mainnet (docs/INTEGRATIONS.md, scripts/deploy-mainnet.sh). */
@@ -280,13 +280,16 @@ export function NewVault({ config, signer, wallet }: { config: AppConfig; signer
   }
 
   const header = (
-    <div className="space-y-2">
-      <h1 className="text-2xl font-semibold tracking-tight text-ink">Create a vault</h1>
-      <p className="text-sm text-zinc-600">
-        Two steps, both from this page. First your wallet pays for the vault account. Then this tab starts the vault with a key only it holds, so the
-        vault ends up with no key that could change its code, not even yours. Your agent gets its own key later.
-      </p>
-    </div>
+    <PageHeader
+      eyebrow="New vault · about two minutes"
+      title="Create a vault"
+      lede={
+        <>
+          Two steps, both from this page. First your wallet pays for the vault account. Then this tab starts the vault with a key only it holds, so the
+          vault ends up with no key that could change its code, not even yours. Your agent gets its own key later.
+        </>
+      }
+    />
   );
 
   if (step.kind === "cancelled") {

@@ -15,7 +15,8 @@ import type { SignerState } from "../useSigner.js";
 import { DestinationAddress } from "./AccountLink.js";
 import { PolicyReview, withRoute } from "./owner/RulesEditor.js";
 import { splitList, TextField } from "./owner/SignReview.js";
-import { Button, Card, Mono, Notice, StatusBadge } from "./ui.js";
+import { Globe, ListChecks } from "@phosphor-icons/react";
+import { Button, Card, Mono, Notice, PageHeader, SectionTitle, StatusBadge } from "./ui.js";
 
 interface Priced {
   quote: QuoteResponse;
@@ -165,16 +166,19 @@ export function CrossChainPage({ config, signer, wallet }: { config: AppConfig; 
 
   return (
     <div className="space-y-10" data-testid="crosschain-page">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">Cross-chain payments</h1>
-        <p className="text-sm text-zinc-600">
-          Your agent can pay someone on another chain through NEAR Intents 1Click, but only to destinations you allow here, and every such payment waits for
-          your approval. The vault sends the tokens to 1Click&apos;s deposit address on NEAR; 1Click pays the recipient there.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Cross-chain · NEAR Intents 1Click"
+        title="Cross-chain payments"
+        lede={
+          <>
+            Your agent can pay someone on another chain through NEAR Intents 1Click, but only to destinations you allow here, and every such payment waits
+            for your approval. The vault sends the tokens to 1Click&apos;s deposit address on NEAR; 1Click pays the recipient there.
+          </>
+        }
+      />
 
-      <section aria-label="Price a route" className="space-y-3">
-        <h2 className="text-lg font-semibold tracking-tight">Price a route</h2>
+      <section aria-label="Price a route" className="space-y-4">
+        <SectionTitle icon={Globe} tint="sky" title="Price a route" />
         <Card className="space-y-4">
           {api === null ? (
             <Notice tone="warn" title="This copy of the site has no 1Click access">
@@ -269,8 +273,8 @@ export function CrossChainPage({ config, signer, wallet }: { config: AppConfig; 
         </Card>
       </section>
 
-      <section aria-label="Cross-chain requests" className="space-y-3">
-        <h2 className="text-lg font-semibold tracking-tight">Your agent&apos;s cross-chain requests</h2>
+      <section aria-label="Cross-chain requests" className="space-y-4">
+        <SectionTitle icon={ListChecks} title="Your agent's cross-chain requests" />
         <Card>
           {requests.length === 0 ? (
             <p className="text-sm text-zinc-600">None yet.</p>
