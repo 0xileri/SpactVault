@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-11-03 (UTC). Network mode: **NEAR mainnet** since 2026-11-01, with a locked vault funded with 5 real USDC, of which the three demo payments on 2026-11-03 paid out 2.5 USDC (see "Mainnet deployment"). The testnet vault (since 2026-10-25) and the local sandbox stay for tests; testnet NEAR and the TUSD test token have no value.
+Last updated 2026-11-04 (UTC). Network mode: **NEAR mainnet** since 2026-11-01. The main vault is now the P1 vault `9dc744e29f8a079c6888dbdaafa8fb618b08c3734d00f4f25c8b31050ea086c9`, made from the website on 2026-11-04 and used for the first live cross-chain payment ("Mainnet cross-chain run"). It is a 64-character implicit account, not a named account under `0xileri.near`, because Meteor refuses to deploy contract code for a website. The P0 vault `vault.0xileri.near` stays listed beside it: its three demo payments on 2026-11-03 paid out 2.5 USDC of its 5, and the owner took the other 2.5 back on 2026-11-04 ("Mainnet deployment"). The testnet vault (since 2026-10-25) and the local sandbox stay for tests; testnet NEAR and the TUSD test token have no value.
 
 ## Milestone: AGENTS.md section 19 steps 1-5
 
@@ -25,7 +25,7 @@ Last updated 2026-11-03 (UTC). Network mode: **NEAR mainnet** since 2026-11-01, 
 | 6 | owner wallet approves the exact request; executes once | local tested in a real browser (sandbox, dev signer); **testnet: the owner approved and paid `demo-approve-1` (25 TUSD) with Meteor Wallet on the hosted site**, and the page showed "Confirmed on chain" (owner's report, 2026-10-25); **mainnet: the owner approved and paid `agent-mainnet-2` (2 USDC) with Meteor Wallet on https://spactvault.xyz** ([`RqphTo2H…`](https://nearblocks.io/txns/RqphTo2Hy9ifsW7Y2PDXFM2A8gtcxu6GHdBuzfcP2oB), 2026-11-03). Other wallets untested |
 | 7 | dashboard | local tested in a real browser (sandbox): balance, budget, open requests and activity match the chain; inconsistent budget data from the RPC is flagged; no tx hashes (no indexer) |
 | 8 | Security Lab, at least 6 negative tests | local tested: generated report and page; 17 of 18 cases pass on a local chain, T10 in unit tests only, none uncovered (2026-11-02, with the P1 route; THREAT_MODEL.md); CI builds the report and publishes it with the site to GitHub Pages from main (ADR-023) |
-| 9 | public app, README, video, submission | public repo; site live at https://spactvault.xyz (Railway) and https://0xileri.github.io/SpactVault/, both built for the mainnet vault, with a landing page and brand (ADR-024, ADR-027); README in progress; video and submission not started |
+| 9 | public app, README, video, submission | public repo; site live at https://spactvault.xyz (Railway) and https://0xileri.github.io/SpactVault/, both built for mainnet, with a landing page and brand (ADR-024, ADR-027); README done (2026-11-04, MIT license); video, X post and submission not started (see "Next smallest task") |
 
 ## P1: NEAR Intents 1Click route (2026-11-02)
 
@@ -124,7 +124,7 @@ The first real cross-chain payment from a SpactVault vault, end to end on NEAR m
 - **A plain `ft_transfer` is the deposit 1Click detects.** The vault paid the deposit address with `ft_transfer` (no `ft_transfer_call`) and 1Click credited it as the deposit (`originChainTxHashes`). This was the last open question about the route (ADR-033).
 - **The deposit address needs registering with USDC first.** It was not registered; the approval page found that with `storage_balance_of` and offered the `storage_deposit`, which the owner signed before approving.
 - **The site's own `/1click` proxy works against the live API:** the Cross-chain page's signed price and the approval page's deposit check both went through it.
-- **Meteor:** it signs plain transfers, function calls with 1 yoctoNEAR, and `CreateAccount + Transfer + AddKey(function call)` for a new sub-account. It refuses a full-access `AddKey` and a `DeployContract` requested by a website, so a named vault (`vault2.0xileri.near`) cannot be made with it, and the vault has a 64-character implicit id (ADR-035, ADR-036).
+- **Meteor:** it signs plain transfers, function calls with 1 yoctoNEAR, and `CreateAccount + Transfer + AddKey(function call)` for a new sub-account. It refuses a full-access `AddKey` and a `DeployContract` requested by a website. That is why the vault is the implicit account `9dc744e29f8a079c6888dbdaafa8fb618b08c3734d00f4f25c8b31050ea086c9`: a named vault under `0xileri.near` needs the wallet to deploy the code, and with Meteor the any-wallet way (a plain transfer, then this tab installs the code) is the only one that works (ADR-035, ADR-036).
 
 **What did not go smoothly:**
 - The first "I approved it" did not reach the vault: the first signature on the approval page was the deposit address's registration, and the approval itself is a second signature. The page could say "step 1 of 2" more plainly.
@@ -137,7 +137,7 @@ The first real cross-chain payment from a SpactVault vault, end to end on NEAR m
 
 ## Mainnet deployment (2026-11-01)
 
-Deployed by the owner with `scripts/deploy-mainnet.sh 0xileri.near 0xileri.near` from WSL Ubuntu (near-cli-rs 0.30.1), under DECISIONS ADR-028. The hosted sites read this vault: Railway (https://spactvault.xyz) through service variables, GitHub Pages through repository variables.
+Deployed by the owner with `scripts/deploy-mainnet.sh 0xileri.near 0xileri.near` from WSL Ubuntu (near-cli-rs 0.30.1), under DECISIONS ADR-028. Until 2026-11-04 the hosted sites read this vault: Railway (https://spactvault.xyz) through service variables, GitHub Pages through repository variables. Since PR #27 (ADR-038), the owner has set Railway's variables to make the P1 vault `9dc744e2…` the default and list this one as "P0 vault" (owner's report; Railway shows the variable names, not their values, from here); GitHub Pages still builds with this one until its repository variables change ("Next smallest task").
 
 | | Account | Explorer |
 |---|---|---|
@@ -346,10 +346,17 @@ Agent key (2026-10-24): the agent now signs with a function-call key that reache
 
 ## Next smallest task
 
-Record 1Click's token list as a fixture (the owner's `tokens.json` from 2026-11-03, or a fresh `GET /v0/tokens`) and run `findRoute` and the cross-chain page's destination list against it. Base was not quoted yet; one dry quote to USDC on Base would cover the second chain the owner may pick.
+**Done on 2026-11-04:**
+- [x] **1Click token list as a fixture.** `tokens.json` (215 entries, sha256 checked) is in `packages/intents/test/fixtures/live`, and `findRoute` and `tokenListSchema` (the parser the cross-chain page builds its destination list from) are tested on it: all 215 entries parse, and the USDC routes to Base and Solana are found (PR #26).
+- [x] **One dry quote to USDC on Base**, recorded and tested (PR #26).
+- [x] **The mainnet P1 run.** Vault `9dc744e29f8a079c6888dbdaafa8fb618b08c3734d00f4f25c8b31050ea086c9`, 1 USDC to the owner's Base address, 0.997398 USDC delivered, 1Click `SUCCESS`; every hash is in "Mainnet cross-chain run" above (PR #26). The vault was planned as a named account under `0xileri.near`. Meteor blocks a website's `DeployContract`, so it was made the any-wallet way and has an implicit id.
+- [x] **Site config switch** (PR #27, ADR-038). Explorer settings take a base URL, every account and hash links to its explorer, and the owner set Railway's variables for the P1 vault with `vault.0xileri.near` listed as "P0 vault".
+- [x] **Top bar.** Since PR #25 it holds Dashboard, Cross-chain, Manage (hidden on phones) and Create your vault: no network switch and no Security Lab link. The Security Lab is in the footer ("Security Lab: how it was tested"). The testnet code stays behind config (`VITE_TESTNET_VAULT_ID`, `?network=` links), so its tests still run.
 
-Then the mainnet run, on https://spactvault.xyz with Meteor, each step confirmed by the owner (README "Run your own vault from the website"): create `vault2.0xileri.near`, fund it with about 3 USDC, create `agent2.0xileri.near` with its key, allow one recipient, let the agent request 1 USDC cross-chain through the MCP server, approve it, and record every transaction hash, the deposit address and 1Click's final status here. Only after the owner confirms: point the site's mainnet config at vault2 with `vault.0xileri.near` listed as the P0 vault (`VITE_VAULT_ID=vault2.0xileri.near`, `VITE_EXTRA_VAULTS=vault.0xileri.near=P0 vault`).
-
-Still open from before: the testnet approval transaction hashes for `demo-approve-1` and `agent-approve-1`, if the owner has them.
-
-Then, on the owner's machine: with a bot from @BotFather, run the notifier (apps/notifier/README.md) against the testnet vault and check that the alert arrives on the phone.
+**Next:**
+1. **GitHub Pages variables** (owner, repository Settings, Secrets and variables, Actions, Variables). The `pages` build for `bfd6ef9` still ran with `VITE_VAULT_ID=vault.0xileri.near` and an empty `VITE_EXTRA_VAULTS`, so https://0xileri.github.io/SpactVault/ shows the P0 vault. Set `VITE_VAULT_ID=9dc744e29f8a079c6888dbdaafa8fb618b08c3734d00f4f25c8b31050ea086c9`, `VITE_VAULT_LABEL=P1 vault` and `VITE_EXTRA_VAULTS=vault.0xileri.near=P0 vault`; the next push to main rebuilds Pages with them. Explorer links need nothing: empty means nearblocks on mainnet.
+2. **Demo video and the X post** (owner). A short screen recording of the run on https://spactvault.xyz: the agent asks for a payment from Claude Code, the vault holds it, the owner approves in Meteor, the USDC lands on Base; then the Security Lab. The owner posts it from the @spactvault account on X, saying it was built at NEAR HACKATHON, with the video attached (HACKATHON.md). Claude can draft the text; the owner posts it and shares the link.
+3. **The submission payload** (HACKATHON.md "Submission API"). Tracks `security`, `agents` and `defi`; `projectUrl` https://github.com/0xileri/SpactVault; `demoUrl` the X post from step 2; `nearAddress` the owner's payout account; the owner's name, email and team size; an `idea` of 20 to 2,000 characters; `consent` only after the owner agrees to the contact notice. Claude prints the full JSON and sends nothing until the owner says yes: there is one attempt per team, and the window closes 2026-11-14T23:59:00Z.
+4. **Optional:**
+   - the testnet approval transaction hashes for `demo-approve-1` and `agent-approve-1`, if the owner has them;
+   - on the owner's machine, with a bot from @BotFather, run the notifier (apps/notifier/README.md) against the testnet vault and check that the alert arrives on the phone.
