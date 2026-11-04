@@ -5,3 +5,4 @@ export * as quote from "./quote.js";
 export * as statusPending from "./status-pending.js";
 export { LIVE, liveRequest } from "./request.js";
 export * as tokens from "./tokens.js";
+export * as quoteDryBase from "./quote-dry-base.js";

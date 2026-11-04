@@ -18,7 +18,7 @@ import {
   tokenListSchema,
   verifyQuoteSignature,
 } from "../src/index.js";
-import { errors, tokens } from "./fixtures/live/index.js";
+import { errors, quoteDryBase, tokens } from "./fixtures/live/index.js";
 import * as dry from "./fixtures/live/quote-dry.js";
 import * as live from "./fixtures/live/quote.js";
 import { LIVE, liveRequest } from "./fixtures/live/request.js";
@@ -201,5 +201,35 @@ describe("live 1Click token list (recorded 2026-11-04)", () => {
       expect(CHAIN_RE.test(t.blockchain), t.blockchain).toBe(true);
       expect(EXTERNAL_ID_RE.test(t.assetId) && t.assetId.length <= 128, t.assetId).toBe(true);
     }
+  });
+});
+
+describe("live dry quote to Base for the mainnet run (recorded 2026-11-04)", () => {
+  it("is signed by 1Click, answers exactly what was asked, and refunds to the vault", () => {
+    expect(quoteDryBase.status).toBe(201);
+    expect(verifyQuoteSignature(quoteDryBase.body)).toBe(true);
+    // a different payee breaks the signature
+    const other = { ...quoteDryBase.body, quoteRequest: { ...quoteDryBase.body.quoteRequest, recipient: "0x0000000000000000000000000000000000000001" } };
+    expect(verifyQuoteSignature(other)).toBe(false);
+
+    const parsed = quoteResponseSchema.parse(quoteDryBase.body);
+    // what our own builder sends for these values is exactly the recorded request
+    const built = buildQuoteRequest({
+      vaultId: quoteDryBase.VAULT,
+      token: LIVE.usdc,
+      amount: 1_000_000n,
+      destinationAsset: tokens.BASE_USDC,
+      recipient: quoteDryBase.BASE_RECIPIENT,
+      slippageBps: 100,
+      deadline: new Date(quoteDryBase.request.deadline),
+      dry: true,
+    });
+    expect(built).toEqual(quoteDryBase.request);
+    expect(parsed.quoteRequest).toMatchObject(built);
+    expect(parsed.quoteRequest.refundTo).toBe(quoteDryBase.VAULT);
+    expect(parsed.quote).toMatchObject({ amountIn: "1000000", amountOut: "997398", minAmountOut: "987424", refundFee: "5128", withdrawFee: "2400" });
+    expect(parsed.quote.depositAddress).toBeUndefined();
+    // the destination is one 1Click lists, on Base
+    expect(findRoute(tokens.body, LIVE.usdc, built.destinationAsset)?.destination.blockchain).toBe("base");
   });
 });
