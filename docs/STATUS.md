@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-11-04 (UTC). Network mode: **NEAR mainnet** since 2026-11-01. The main vault is now the P1 vault `9dc744e29f8a079c6888dbdaafa8fb618b08c3734d00f4f25c8b31050ea086c9`, made from the website on 2026-11-04 and used for the first live cross-chain payment ("Mainnet cross-chain run"). It is a 64-character implicit account, not a named account under `0xileri.near`, because the owner's wallet refuses to deploy contract code for a website. The P0 vault `vault.0xileri.near` stays listed beside it: its three demo payments on 2026-11-03 paid out 2.5 USDC of its 5, and the owner took the other 2.5 back on 2026-11-04 ("Mainnet deployment"). The testnet vault (since 2026-10-25) and the local sandbox stay for tests; testnet NEAR and the TUSD test token have no value.
+Last updated 2026-11-05 (UTC). Network mode: **NEAR mainnet** since 2026-11-01. The main vault is now the P1 vault `9dc744e29f8a079c6888dbdaafa8fb618b08c3734d00f4f25c8b31050ea086c9`, made from the website on 2026-11-04 and used for the first live cross-chain payment ("Mainnet cross-chain run"). It is a 64-character implicit account, not a named account under `0xileri.near`, because the owner's wallet refuses to deploy contract code for a website. The P0 vault `vault.0xileri.near` stays listed beside it: its three demo payments on 2026-11-03 paid out 2.5 USDC of its 5, and the owner took the other 2.5 back on 2026-11-04 ("Mainnet deployment"). A second P1 vault, `ce72668797bf7a8b89160c0c69a7639b3516c264ff8fa48b59ef23bb159d2f3c`, ran the demo video's payment and hard-cap refusal on 2026-11-05 ("Second mainnet cross-chain run"). The testnet vault (since 2026-10-25) and the local sandbox stay for tests; testnet NEAR and the TUSD test token have no value.
 
 ## Milestone: AGENTS.md section 19 steps 1-5
 
@@ -134,6 +134,36 @@ The first real cross-chain payment from a SpactVault vault, end to end on NEAR m
 **What it cost:** 3.2 NEAR now in the vault for good (code storage and request storage; ADR-036), 0.3 NEAR in the agent account for its gas, two USDC registrations (0.00125 NEAR each), and gas. Of the USDC, 1 was paid and 0.997398 arrived; 0.2 stays in the vault and can be taken out.
 
 **Fixtures from this run** (`packages/intents/test/fixtures/live`): the full token list (`tokens.json`, 215 entries, sha256 checked), the dry quote to Base, and 1Click's `SUCCESS` status for this deposit, each with tests.
+
+## Second mainnet cross-chain run, recorded for the demo video (2026-11-05)
+
+The run in the demo video. The owner set up a separate P1 vault for it and did every wallet step on https://spactvault.xyz with a NEAR wallet, screen-recorded from the home page to the dashboard, plus the agent's terminal for each request. The agent ran the repo's MCP server against this vault. The hashes below are the owner's report. The build environment cannot reach mainnet or the explorers, so they are not checked here. Where the recording shows a value (the request page, 1Click's tracker, basescan, the dashboard, the MCP tool results), it matches.
+
+**What happened, in one line:** the agent asked for 1 USDC to the owner's Base address and the vault held it. The owner registered the deposit address and approved in their NEAR wallet, and 1Click delivered 0.997398 USDC on Base, under 40 seconds after the approval by the recording. Then the agent asked for 5 USDC, and the vault refused it on chain with `HARD_CAP_EXCEEDED`. No USDC moved.
+
+| | Account |
+|---|---|
+| Vault (P1 build; the site shows "not listed by this site · verified P1 code, locked") | [`ce72668797bf7a8b89160c0c69a7639b3516c264ff8fa48b59ef23bb159d2f3c`](https://nearblocks.io/address/ce72668797bf7a8b89160c0c69a7639b3516c264ff8fa48b59ef23bb159d2f3c) |
+| Owner (the connected NEAR wallet; Manage says only it can sign changes) | [`e7d5b2863d095166174949b28b8fba5921a6a1324183936c92e7c0c38a530252`](https://nearblocks.io/address/e7d5b2863d095166174949b28b8fba5921a6a1324183936c92e7c0c38a530252) |
+| 1Click deposit address for the 1 USDC request | [`3046683531e6c010eda54c5d0685c15ea0f98b568bd69b122fe9775f79e576dc`](https://nearblocks.io/address/3046683531e6c010eda54c5d0685c15ea0f98b568bd69b122fe9775f79e576dc) |
+| Final recipient on Base (the owner's address, as in the first run) | [`0xdF8ec3262A4ED45fa024805B2305F0e5FE73b938`](https://basescan.org/address/0xdF8ec3262A4ED45fa024805B2305F0e5FE73b938) |
+
+| Step | Signed by | Transaction |
+|---|---|---|
+| The agent's function-call key for this vault, with cross-chain payments (owner's wording: "agent key with cross-chain added") | owner (which key signed is not reported) | [`9htPUVCq…`](https://nearblocks.io/txns/9htPUVCqcaZHJXuTMqauVp7JzkWX3L1aQH3s5MpriY8D) |
+| `set_policy`: the Base route rule (rules version 2) | owner's wallet | [`2kTaEqjB…`](https://nearblocks.io/txns/2kTaEqjBa8zN9rBY68TpNAmEE53JRwkkt5uiA6d3GW4k) |
+| `request_cross_chain_payment` `demo-xc-1793853561975`: 1 USDC to Base, `AWAITING_APPROVAL` | agent (MCP server) | [`2R1L5E8g…`](https://nearblocks.io/txns/2R1L5E8g7NbY82wAcxrWx6NK1n7x36goxNsdHXa6xaSY) |
+| Register the deposit address with USDC (`storage_deposit`, step 1 of 2 on the approval page) | owner's wallet | [`Dmz9ygx1…`](https://nearblocks.io/txns/Dmz9ygx1QCFHvmpD1PvfBkhxK2mC8zKCen7N32QEBRKS) |
+| `approve_request` + `execute_request`: the vault pays the deposit address (step 2 of 2) | owner's wallet | [`FkZ2Jg6Q…`](https://nearblocks.io/txns/FkZ2Jg6QByubkjnpwuZUmLntg7d9hyJ1ePkg9HznSJLT) |
+| 1Click (NEAR Intents treasury `0x2CfF…2680`) sends 0.997398 USDC to `0xdF8e…b938` on Base, block 53532260, 04:44:27 UTC | 1Click | [`0x5f860a9b…`](https://basescan.org/tx/0x5f860a9b29e75fad79f393e72e28126846aaef22c74e82f362cfa0b452fb1832) |
+| `request_cross_chain_payment` `demo-cap-1793853989662`: 5 USDC to Base, `BLOCKED` / `HARD_CAP_EXCEEDED` | agent (MCP server) | [`Egko6v9f…`](https://nearblocks.io/txns/Egko6v9fuTYHkGdA9cvpWiEbFxB1RzLi4gCLQKeqnRD3) |
+
+- **The 1 USDC quote** (the MCP tool result): at least 0.987424 USDC out, quote deadline 2026-11-05 06:39:25 UTC, 1 basis point app fee, quote hash `21ae3e2109d4cbc27a35efac1bd5fa6933368593aaeb88cf4a17865133ebd12c`. The approval page's safety check showed fingerprint `9c14ae80…92cd359f`, checked in the browser, and checked the deposit address with 1Click before it let the owner approve.
+- **1Click's tracker** on the approval page went from "Waiting for the deposit" to "Swapping and sending" to "Delivered, says 1Click", and listed the approval `FkZ2Jg6Q…`, four other NEAR transactions and the Base transaction above. Basescan showed the transfer as `Success`.
+- **The refused request:** the MCP server's answer was "Blocked by the vault policy (HARD_CAP_EXCEEDED): Above the per-payment hard cap. It cannot be approved. Nothing was paid.", with `onchain_status` `BLOCKED`. 1Click had quoted it (deposit address `31dc14f9…a366c`, quote hash `c828fb20…eccb96`), but the vault never paid that address.
+- **Balances:** Manage showed 2 USDC in the vault before the run. After it, the dashboard showed 1 USDC in the vault and 4 of 5 USDC left today (1 USDC spent), and the owner reports the vault holds 1 USDC.
+- **Not reported:** the transactions that created and funded this vault, and the agent account's name.
+- **The site does not list this vault.** Railway's variables still name `9dc744…` as the main vault, so `ce7266…` opens only through a link with `vault=`, and the site labels it "not listed by this site" after checking its code.
 
 ## Mainnet deployment (2026-11-01)
 
@@ -354,9 +384,12 @@ Agent key (2026-10-24): the agent now signs with a function-call key that reache
 - [x] **GitHub Pages variables.** Set by the owner; the re-run of the `pages` job for `4579797` built with `VITE_VAULT_ID=9dc744e2…`, `VITE_VAULT_LABEL=P1 vault` and `VITE_EXTRA_VAULTS=vault.0xileri.near=P0 vault`.
 - [x] **Top bar.** Since PR #25 it holds Dashboard, Cross-chain, Manage (hidden on phones) and Create your vault: no network switch and no Security Lab link. The Security Lab is in the footer ("Security Lab: how it was tested"). The testnet code stays behind config (`VITE_TESTNET_VAULT_ID`, `?network=` links), so its tests still run.
 
+**Done on 2026-11-05:**
+- [x] **The demo run, recorded.** On vault `ce72668797bf7a8b89160c0c69a7639b3516c264ff8fa48b59ef23bb159d2f3c`: 1 USDC to Base, approved in a NEAR wallet, 0.997398 USDC delivered; then 5 USDC refused on chain with `HARD_CAP_EXCEEDED` ("Second mainnet cross-chain run" above). The owner's screen recording and the two agent clips were cut into a 1:40 video with captions and a voiceover. The video is not in the repository.
+
 **Next:**
-1. **Demo video and the X post** (owner). Draft text: `docs/DEMO_POST.md`. A short screen recording of the run on https://spactvault.xyz: the agent asks for a payment from Claude Code, the vault holds it, the owner approves in their NEAR wallet, the USDC lands on Base; then the Security Lab. The owner posts it from the @spactvault account on X, saying it was built at NEAR HACKATHON and tagging @NEARProtocol and #NEARHackathon, with the video attached (HACKATHON.md). Claude can draft the text; the owner posts it and shares the link.
-2. **The submission payload** (HACKATHON.md "Submission API"; draft in `docs/SUBMISSION.md`, which is gitignored). Tracks `security`, `agents` and `defi`; `projectUrl` https://github.com/0xileri/SpactVault; `demoUrl` the X post from step 2; `nearAddress` the owner's payout account; the owner's name, email and team size; an `idea` of 20 to 2,000 characters; `consent` only after the owner agrees to the contact notice. Claude prints the full JSON and sends nothing until the owner says yes: there is one submission per project, a mistake is fixed at https://nearhackathon.com/request-changes and never by sending again, and the window closes 2026-11-14T23:59:00Z.
+1. **The X post** (owner). Draft text: `docs/DEMO_POST.md`; the video is cut. The owner posts it from the @spactvault account on X, saying it was built at NEAR HACKATHON and tagging @NEARProtocol and #NEARHackathon, with the video attached (HACKATHON.md). Claude can draft the text; the owner posts it and shares the link.
+2. **The submission payload** (HACKATHON.md "Submission API"; draft in `docs/SUBMISSION.md`, which is gitignored). Tracks `security`, `agents` and `defi`; `projectUrl` https://github.com/0xileri/SpactVault; `demoUrl` the X post from step 1; `nearAddress` the owner's payout account; the owner's name, email and team size; an `idea` of 20 to 2,000 characters; `consent` only after the owner agrees to the contact notice. Claude prints the full JSON and sends nothing until the owner says yes: there is one submission per project, a mistake is fixed at https://nearhackathon.com/request-changes and never by sending again, and the window closes 2026-11-14T23:59:00Z.
 3. **Keep the hosted demo up** until 2026-11-18, ideally 2026-11-25 (HACKATHON.md Q-012): https://spactvault.xyz on Railway, and the repository public through judging (Q-014).
 4. **Tags** (owner): `pre-hackathon` on the first commit and `hackathon-submission` on main as submitted (README "Built during NEAR HACKATHON").
 5. **Optional:**
