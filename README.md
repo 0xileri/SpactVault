@@ -6,7 +6,7 @@
 
 - **Live site:** https://spactvault.xyz (NEAR mainnet)
 - **X:** [@spactvault](https://x.com/spactvault)
-- **Demo video:** _coming before submission_
+- **Demo video:** [the demo post on X](https://x.com/spactvault/status/2118225273523233241) (1:40, recorded on mainnet: 1 USDC to Base waits for the owner's OK and lands; 5 USDC is refused on chain)
 - **Code:** https://github.com/0xileri/SpactVault, [MIT](LICENSE)
 - **Security report:** https://spactvault.xyz/?page=security
 
@@ -273,6 +273,7 @@ Merged pull requests, by merge date (UTC):
 - **Nov 2:** one site for testnet and mainnet (#19; its switch was removed in #25).
 - **Nov 3:** the cross-chain route: owner-approved payments through NEAR Intents 1Click, in the contract, the MCP server and the site (#20); the first mainnet payments from Claude Code: paid, held for approval, blocked (#21); every owner step on the website, with 1Click's quote signatures checked (#22); vault and agent setup that any NEAR wallet can sign (#23).
 - **Nov 4:** Take money out (#24); a simpler site with one action (#25); **the first cross-chain payment on mainnet, 1 USDC to Base, `SUCCESS`** (#26); the site pointed at that vault, every account and hash linked (#27); this README's mainnet record and the MIT license (#28); status cleanup (#29); the judges' README, provenance and the submission drafts (#30).
+- **Nov 5:** the demo video's mainnet run recorded in STATUS, and the demo post linked here (#31).
 
 The code and docs were written with an AI coding agent (Claude Code) working from AGENTS.md; the owner directed the work and did every wallet step.
 

@@ -1,6 +1,6 @@
 # Demo post on X (draft)
 
-Draft for the @spactvault account. **Nothing here has been posted.** The owner posts it, attaches the demo video or screenshots, and shares the post's link, which becomes `demoUrl` in the submission (HACKATHON.md).
+**Posted on 2026-11-05** by the owner from @spactvault as a four-post thread with the video attached: https://x.com/spactvault/status/2118225273523233241. That link is `demoUrl` in the submission (HACKATHON.md). The thread's first post opens with "Introducing SPACTVAULT.", says it was built at NEAR HACKATHON and tags @NEARProtocol and #NEARHackathon. The drafts below are the earlier versions, kept for reference.
 
 Before posting, check:
 - the demo video is attached (HACKATHON.md accepts a video or screenshots; Q-012 says screenshots are not enough when judges cannot open the demo, so a video is the safe choice);
