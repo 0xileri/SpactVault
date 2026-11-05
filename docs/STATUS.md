@@ -387,11 +387,11 @@ Agent key (2026-10-24): the agent now signs with a function-call key that reache
 **Done on 2026-11-05:**
 - [x] **The demo run, recorded.** On vault `ce72668797bf7a8b89160c0c69a7639b3516c264ff8fa48b59ef23bb159d2f3c`: 1 USDC to Base, approved in a NEAR wallet, 0.997398 USDC delivered; then 5 USDC refused on chain with `HARD_CAP_EXCEEDED` ("Second mainnet cross-chain run" above). The owner's screen recording and the two agent clips were cut into a 1:40 video with captions and a voiceover. The video is not in the repository.
 - [x] **The demo post on X.** Posted by the owner from @spactvault as a four-post thread, video attached: https://x.com/spactvault/status/2118225273523233241. It says it was built at NEAR HACKATHON and tags @NEARProtocol and #NEARHackathon. It is the `demoUrl` for the submission. The link is the owner's report; x.com cannot be reached from the build environment.
+- [x] **Submitted.** The owner sent the payload through the Submission API on 2026-11-05 and got HTTP 201 (owner's report): project SpactVault, tracks `security`, `agents` and `defi`, team size 1, `projectUrl` https://github.com/0xileri/SpactVault, `demoUrl` the post above, payout account `0xileri.near`. The personal fields stay out of the repository (`docs/SUBMISSION.md` is gitignored). A mistake is now fixed only at https://nearhackathon.com/request-changes, never by submitting again (HACKATHON.md).
 
 **Next:**
-1. **The submission payload** (HACKATHON.md "Submission API"; draft in `docs/SUBMISSION.md`, which is gitignored). Tracks `security`, `agents` and `defi`; `projectUrl` https://github.com/0xileri/SpactVault; `demoUrl` https://x.com/spactvault/status/2118225273523233241; `nearAddress` the owner's payout account; the owner's name, email and team size; an `idea` of 20 to 2,000 characters; `consent` only after the owner agrees to the contact notice. Claude prints the full JSON and sends nothing until the owner says yes: there is one submission per project, a mistake is fixed at https://nearhackathon.com/request-changes and never by sending again, and the window closes 2026-11-14T23:59:00Z.
-2. **Keep the hosted demo up** until 2026-11-18, ideally 2026-11-25 (HACKATHON.md Q-012): https://spactvault.xyz on Railway, and the repository public through judging (Q-014).
-3. **Tags** (owner): `pre-hackathon` on the first commit and `hackathon-submission` on main as submitted (README "Built during NEAR HACKATHON").
-4. **Optional:**
+1. **Keep the hosted demo up** until 2026-11-18, ideally 2026-11-25 (HACKATHON.md Q-012): https://spactvault.xyz on Railway, and the repository public through judging (Q-014).
+2. **Tags** (owner): `pre-hackathon` on the first commit and `hackathon-submission` on main as submitted (README "Built during NEAR HACKATHON").
+3. **Optional:**
    - the testnet approval transaction hashes for `demo-approve-1` and `agent-approve-1`, if the owner has them;
    - on the owner's machine, with a bot from @BotFather, run the notifier (apps/notifier/README.md) against the testnet vault and check that the alert arrives on the phone.
