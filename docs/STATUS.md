@@ -25,7 +25,7 @@ Last updated 2026-11-05 (UTC). Network mode: **NEAR mainnet** since 2026-11-01. 
 | 6 | owner wallet approves the exact request; executes once | local tested in a real browser (sandbox, dev signer); **testnet: the owner approved and paid `demo-approve-1` (25 TUSD) with a NEAR wallet on the hosted site**, and the page showed "Confirmed on chain" (owner's report, 2026-10-25); **mainnet: the owner approved and paid `agent-mainnet-2` (2 USDC) with a NEAR wallet on https://spactvault.xyz** ([`RqphTo2H…`](https://nearblocks.io/txns/RqphTo2Hy9ifsW7Y2PDXFM2A8gtcxu6GHdBuzfcP2oB), 2026-11-03). Other wallets untested |
 | 7 | dashboard | local tested in a real browser (sandbox): balance, budget, open requests and activity match the chain; inconsistent budget data from the RPC is flagged; no tx hashes (no indexer) |
 | 8 | Security Lab, at least 6 negative tests | local tested: generated report and page; 17 of 18 cases pass on a local chain, T10 in unit tests only, none uncovered (2026-11-02, with the P1 route; THREAT_MODEL.md); CI builds the report and publishes it with the site to GitHub Pages from main (ADR-023) |
-| 9 | public app, README, video, submission | public repo; site live at https://spactvault.xyz (Railway) and https://0xileri.github.io/SpactVault/, both built for mainnet, with a landing page and brand (ADR-024, ADR-027); README done (2026-11-04, MIT license); video, X post and submission not started (see "Next smallest task") |
+| 9 | public app, README, video, submission | public repo; site live at https://spactvault.xyz (Railway) and https://0xileri.github.io/SpactVault/, both built for mainnet, with a landing page and brand (ADR-024, ADR-027); README done (2026-11-04, MIT license); demo video posted on X, live at https://x.com/spactvault/status/2118225273523233241; submission sent on 2026-11-05 (HTTP 201, owner's report) |
 
 ## P1: NEAR Intents 1Click route (2026-11-02)
 
@@ -391,7 +391,6 @@ Agent key (2026-10-24): the agent now signs with a function-call key that reache
 
 **Next:**
 1. **Keep the hosted demo up** until 2026-11-18, ideally 2026-11-25 (HACKATHON.md Q-012): https://spactvault.xyz on Railway, and the repository public through judging (Q-014).
-2. **Tags** (owner): `pre-hackathon` on the first commit and `hackathon-submission` on main as submitted (README "Built during NEAR HACKATHON").
-3. **Optional:**
+2. **Optional:**
    - the testnet approval transaction hashes for `demo-approve-1` and `agent-approve-1`, if the owner has them;
    - on the owner's machine, with a bot from @BotFather, run the notifier (apps/notifier/README.md) against the testnet vault and check that the alert arrives on the phone.
